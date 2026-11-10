@@ -86,8 +86,11 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             return null;
         }
 
+        FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
         BlockPos mobPos = this.mob.blockPosition();
-        return FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
+        return flagsSavedData.getFlagLocations().stream()
+                // Raiders don't march on flags their faction already owns
+                .filter(flagPos -> !flagsSavedData.getCapturedFlagLocations().contains(flagPos))
                 .filter(this.mob::isWithinRestriction)
                 .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(mobPos)))
                 .orElse(null);
@@ -451,7 +454,15 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     protected boolean isValidTarget(LevelReader level, BlockPos pos) {
         // Flags are tracked in FlagsSavedData, so trust that while the chunk is
         // unloaded; verify the block is still there once its chunk is loaded
-        return !level.hasChunkAt(pos) || level.getBlockState(pos).getBlock() instanceof BaseFlagBlock;
+        if (level.hasChunkAt(pos) && !(level.getBlockState(pos).getBlock() instanceof BaseFlagBlock)) {
+            return false;
+        }
+        // A flag captured since the goal started is no longer a march target
+        if (this.mob.level() instanceof ServerLevel serverLevel
+                && FlagsSavedData.getFromLevel(serverLevel).getCapturedFlagLocations().contains(pos)) {
+            return false;
+        }
+        return true;
     }
 
     @Override

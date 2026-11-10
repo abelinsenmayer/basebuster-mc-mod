@@ -1,5 +1,8 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
+import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -23,21 +26,49 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
 
 public class BaseFlagBlockEntity extends BlockEntity {
+    // Faction name assigned to flags captured by raiders
+    public static final String RAIDER_FACTION = "RAIDERS";
+    // Segments rendered as '=' in the owner's capture progress bar
+    private static final int PROGRESS_BAR_SEGMENTS = 10;
+    // Ticks between capture progress notifications to the owner
+    private static final int NOTIFY_INTERVAL_TICKS = 10;
+
     private Player owner = null;
     private String ownerName = "NONE";
+    // Faction ownership replaces player ownership (e.g. RAIDER_FACTION).
+    // While set, getOwner() returns null so grief protection no longer applies.
+    @Nullable
+    private String ownerFaction = null;
     private List<RepairTarget> repairTargets = new ArrayList<>();
+
+    // Progress toward a raider capture, in [0, 1)
+    private float captureProgress = 0.0F;
+    // Game time of the last capture tick; progress resets after a one-tick gap
+    private long lastCaptureTick = -1L;
+    // Capturer id -> game time of its most recent capture tick
+    private final Map<UUID, Long> capturerTicks = new HashMap<>();
+
+    // Progress toward a player's right-click capture, in [0, 1)
+    private float playerCaptureProgress = 0.0F;
+    // The player currently capturing; a different player's click resets progress
+    @Nullable
+    private UUID playerCapturerId = null;
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         super(BASE_FLAG_BLOCK_ENTITY.get(), pos, blockState);
     }
 
     public Component getInfoForDisplay() {
-        return Component.literal("Owner: " + ownerName + "\nRepairs needed: " + repairTargets.size());
+        String ownerDisplay = ownerFaction != null ? ownerFaction + " (faction)" : ownerName;
+        return Component.literal("Owner: " + ownerDisplay + "\nRepairs needed: " + repairTargets.size());
     }
 
     public void addRepairTarget(BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {
@@ -147,6 +178,10 @@ public class BaseFlagBlockEntity extends BlockEntity {
             this.ownerName = tag.getString("owner_name");
             getOwner();  // Populate owner from online players (if possible)
         }
+        if (tag.contains("owner_faction")) {
+            this.ownerFaction = tag.getString("owner_faction");
+            this.owner = null;
+        }
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");
             int count = tag.getInt("repair_targets_count");
@@ -161,7 +196,10 @@ public class BaseFlagBlockEntity extends BlockEntity {
     @Override
     public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        if (owner != null) {
+        if (ownerFaction != null) {
+            tag.putString("owner_name", this.ownerName);
+            tag.putString("owner_faction", this.ownerFaction);
+        } else if (owner != null) {
             tag.putString("owner_name", owner.getDisplayName().getString());
         }
         if (!repairTargets.isEmpty()) {
@@ -178,6 +216,10 @@ public class BaseFlagBlockEntity extends BlockEntity {
     }
 
     public Player getOwner() {
+        // Faction-owned flags have no player owner
+        if (ownerFaction != null) {
+            return null;
+        }
         if (owner == null && this.level != null) {
             this.level.players().stream().filter(player -> player.getDisplayName().getString().equals(this.ownerName)).findFirst().ifPresent(player -> this.owner = player);
         }
@@ -187,6 +229,172 @@ public class BaseFlagBlockEntity extends BlockEntity {
     public void setOwner(Player player) {
         this.owner = player;
         this.ownerName = player.getDisplayName().getString();
+        this.ownerFaction = null;
+        this.captureProgress = 0.0F;
+        this.capturerTicks.clear();
+        this.playerCaptureProgress = 0.0F;
+        this.playerCapturerId = null;
+        // Reclaiming a raider-captured flag restores its uncaptured appearance
+        if (this.level instanceof ServerLevel serverLevel
+                && getBlockState().hasProperty(BaseFlagBlock.CAPTURED)
+                && getBlockState().getValue(BaseFlagBlock.CAPTURED)) {
+            BlockPos pos = getBlockPos();
+            serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, false), 3);
+            FlagsSavedData.getFromLevel(serverLevel).removeCapturedFlagLocation(pos);
+        }
+        setChanged();
+    }
+
+    public boolean isRaiderOwned() {
+        return RAIDER_FACTION.equals(this.ownerFaction);
+    }
+
+    public boolean isUnowned() {
+        return this.ownerName == null && this.ownerFaction == null;
+    }
+
+    /**
+     * Records one tick of capture activity by a raider standing next to this flag.
+     * Progress resets when a full tick passes with no capturer. The capture rate
+     * gains {@link Config#FLAG_CAPTURE_SPEED_BONUS} per participating raider, capped
+     * at {@link Config#FLAG_CAPTURE_MAX_SPEED}, so a lone raider needs
+     * {@link Config#FLAG_CAPTURE_SECONDS} seconds to finish.
+     */
+    public void tickCapture(UUID capturerId) {
+        if (!(this.level instanceof ServerLevel serverLevel) || isRaiderOwned()) {
+            return;
+        }
+
+        long now = serverLevel.getGameTime();
+        if (this.lastCaptureTick >= 0 && now - this.lastCaptureTick > 1) {
+            this.captureProgress = 0.0F;
+            this.capturerTicks.clear();
+        }
+        this.lastCaptureTick = now;
+        this.capturerTicks.put(capturerId, now);
+        this.capturerTicks.values().removeIf(tick -> tick < now - 1);
+
+        int participants = Math.max(1, this.capturerTicks.size());
+        double speed = Math.min(
+                1.0 + participants * Config.FLAG_CAPTURE_SPEED_BONUS.get(),
+                Config.FLAG_CAPTURE_MAX_SPEED.get());
+        this.captureProgress += (float) (speed / (participants * this.requiredCaptureTicks()));
+
+        if (this.captureProgress >= 1.0F) {
+            this.captureByRaiders(serverLevel);
+            return;
+        }
+
+        if (now % NOTIFY_INTERVAL_TICKS == 0) {
+            Player ownerPlayer = this.getOwner();
+            if (ownerPlayer != null) {
+                ownerPlayer.displayClientMessage(this.captureProgressMessage(), true);
+            }
+        }
+        setChanged();
+    }
+
+    private double requiredCaptureTicks() {
+        return Config.FLAG_CAPTURE_SECONDS.get() * 20.0;
+    }
+
+    private Component captureProgressMessage() {
+        return Component.literal("Your flag is being captured! " + progressBar(this.captureProgress))
+                .withStyle(ChatFormatting.RED);
+    }
+
+    private static String progressBar(float progress) {
+        int filled = Math.min(PROGRESS_BAR_SEGMENTS, (int) (progress * PROGRESS_BAR_SEGMENTS));
+        String bar = "=".repeat(filled) + " ".repeat(PROGRESS_BAR_SEGMENTS - filled);
+        return "[" + bar + "] " + (int) (progress * 100) + "%";
+    }
+
+    /**
+     * Advances a player's capture of this flag by one right-click.
+     *
+     * <p>Only one player can hold capture progress at a time: a click from a
+     * different player discards the previous capturer's progress and starts the
+     * new player's count. At 100% the flag transfers to the clicking player,
+     * clearing any raider faction ownership and captured appearance.
+     *
+     * @return whether the click was handled as a capture attempt (false when the
+     *         clicker already owns the flag)
+     */
+    public boolean advancePlayerCapture(Player player) {
+        if (!(this.level instanceof ServerLevel)) {
+            return false;
+        }
+
+        Player currentOwner = this.getOwner();
+        if (currentOwner != null && currentOwner.getUUID().equals(player.getUUID())) {
+            return false;
+        }
+
+        // A flag nobody owns is claimed instantly, no clicks needed
+        if (this.isUnowned()) {
+            this.completePlayerCapture(player);
+            return true;
+        }
+
+        if (this.playerCapturerId != null && !this.playerCapturerId.equals(player.getUUID())) {
+            // Contested: someone else was mid-capture, so their progress resets
+            this.playerCaptureProgress = 0.0F;
+        }
+        this.playerCapturerId = player.getUUID();
+        this.playerCaptureProgress += Config.FLAG_CAPTURE_PLAYER_PROGRESS_PER_CLICK.get().floatValue();
+
+        if (this.playerCaptureProgress >= 1.0F) {
+            this.completePlayerCapture(player);
+            return true;
+        }
+
+        player.displayClientMessage(
+                Component.literal("Capturing flag... " + progressBar(this.playerCaptureProgress))
+                        .withStyle(ChatFormatting.RED),
+                true);
+        setChanged();
+        return true;
+    }
+
+    private void completePlayerCapture(Player player) {
+        this.playerCaptureProgress = 0.0F;
+        this.playerCapturerId = null;
+        this.setOwner(player);
+        if (this.level instanceof ServerLevel serverLevel) {
+            serverLevel.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        }
+        player.displayClientMessage(
+                Component.literal("Flag captured! You are now the owner.")
+                        .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD),
+                true);
+    }
+
+    private void captureByRaiders(ServerLevel serverLevel) {
+        Player formerOwner = this.getOwner();
+        // A captured flag can no longer repair its surroundings; drop them like
+        // a flag broken by a player, but with no player to credit
+        this.abandonRepairs(null);
+
+        this.owner = null;
+        this.ownerName = RAIDER_FACTION;
+        this.ownerFaction = RAIDER_FACTION;
+        this.captureProgress = 0.0F;
+        this.capturerTicks.clear();
+        this.playerCaptureProgress = 0.0F;
+        this.playerCapturerId = null;
+
+        BlockPos pos = getBlockPos();
+        serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
+        FlagsSavedData.getFromLevel(serverLevel).addCapturedFlagLocation(pos);
+
+        if (formerOwner != null) {
+            formerOwner.displayClientMessage(
+                    Component.literal("Your base flag has been captured!")
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD),
+                    true);
+        }
+        setChanged();
+        serverLevel.sendBlockUpdated(pos, getBlockState(), getBlockState(), 3);
     }
 
     @Override

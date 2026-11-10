@@ -20,6 +20,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
 import net.minecraft.world.phys.BlockHitResult;
@@ -28,6 +30,8 @@ import javax.annotation.Nullable;
 
 public class BaseFlagBlock extends Block implements EntityBlock {
     public static final int FLAG_PROTECTION_RADIUS = 32;
+    // True once raiders capture the flag; renders as red wool instead of white
+    public static final BooleanProperty CAPTURED = BooleanProperty.create("captured");
 
     public BaseFlagBlock(Properties properties) {
         super(
@@ -39,6 +43,12 @@ public class BaseFlagBlock extends Block implements EntityBlock {
                         // Pistons can't push or break it, and flowing liquids can't wash it away
                         .pushReaction(PushReaction.BLOCK)
         );
+        this.registerDefaultState(this.stateDefinition.any().setValue(CAPTURED, false));
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(CAPTURED);
     }
 
     @Override
@@ -70,15 +80,15 @@ public class BaseFlagBlock extends Block implements EntityBlock {
             return InteractionResult.SUCCESS;
         }
 
+        BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+        if (blockEntity == null) {
+            return InteractionResult.CONSUME;
+        }
+
         if (player.isShiftKeyDown()) {
-            BaseBuster.LOGGER.info("Setting owner of flag at {} to {}", pos, player.getDisplayName().getString());
-            BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
-            if (blockEntity == null) {
-                return InteractionResult.CONSUME;
-            }
-            blockEntity.setOwner(player);
-            level.sendBlockUpdated(pos, state, state, 3);
-            player.displayClientMessage(Component.literal("Flag owner set to " + player.getDisplayName().getString()), true);
+            // Shift-click claims unowned flags instantly; owned flags need a full capture
+            blockEntity.advancePlayerCapture(player);
+            return InteractionResult.SUCCESS;
         }
 
         return InteractionResult.SUCCESS;

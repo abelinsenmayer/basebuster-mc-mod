@@ -1,7 +1,10 @@
 {
   "variants": {
-    "": {
+    "captured=false": {
       "model": "basebuster:block/base_flag_block"
+    },
+    "captured=true": {
+      "model": "basebuster:block/base_flag_block_captured"
     }
   }
 }

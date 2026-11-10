@@ -1,6 +1,8 @@
 package dev.abelinsenmayer.basebuster.entities;
 
+import dev.abelinsenmayer.basebuster.entities.goals.CaptureFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.MoveToFlagGoal;
+import dev.abelinsenmayer.basebuster.entities.goals.WanderNearFlagGoal;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNavigation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
@@ -34,7 +36,10 @@ public class RaiderEntity extends Zombie {
     protected void registerGoals() {
         // Execution goals
         this.goalSelector.addGoal(2, new ZombieAttackGoal(this, 1.0, false));
-        this.goalSelector.addGoal(3, new MoveToFlagGoal(this, 1.0));
+        // Capturing is the raider's highest priority after combat
+        this.goalSelector.addGoal(3, new CaptureFlagGoal(this));
+        this.goalSelector.addGoal(4, new MoveToFlagGoal(this, 1.0));
+        this.goalSelector.addGoal(5, new WanderNearFlagGoal(this, 1.0));
         this.goalSelector.addGoal(6, new MoveThroughVillageGoal(this, 1.0, true, 4, this::canBreakDoors));
         this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));

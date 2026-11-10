@@ -32,6 +32,22 @@ public class Config {
             .comment("Whether raiders may plan paths through breakable blocks and dig through them")
             .define("raiderTunneling.enabled", true);
 
+    public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
+            .comment("Seconds for a single raider to capture a base flag")
+            .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue FLAG_CAPTURE_SPEED_BONUS = BUILDER
+            .comment("Capture speed multiplier added for each raider participating in the capture")
+            .defineInRange("flagCapture.speedBonusPerRaider", 0.1, 0.0, 1.0);
+
+    public static final ModConfigSpec.DoubleValue FLAG_CAPTURE_MAX_SPEED = BUILDER
+            .comment("Maximum capture speed multiplier regardless of raider count")
+            .defineInRange("flagCapture.maxSpeedMultiplier", 2.0, 1.0, 10.0);
+
+    public static final ModConfigSpec.DoubleValue FLAG_CAPTURE_PLAYER_PROGRESS_PER_CLICK = BUILDER
+            .comment("Fraction of capture progress a player gains per right-click on a flag they don't own")
+            .defineInRange("flagCapture.playerProgressPerClick", 0.05, 0.001, 1.0);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     private static boolean validateItemName(final Object obj) {
