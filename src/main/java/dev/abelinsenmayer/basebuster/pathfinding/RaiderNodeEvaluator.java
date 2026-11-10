@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -265,6 +266,10 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
      * column is not obstructed or contains an unbreakable obstruction.
      */
     private float tunnelMalus(int x, int y, int z) {
+        // Digging destroys world blocks -- disallowed when mob griefing is off
+        if (!this.mob.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+            return -1.0F;
+        }
         float hardness = 0.0F;
         for (int dy = 0; dy < this.entityHeight; dy++) {
             BlockPos pos = new BlockPos(x, y + dy, z);

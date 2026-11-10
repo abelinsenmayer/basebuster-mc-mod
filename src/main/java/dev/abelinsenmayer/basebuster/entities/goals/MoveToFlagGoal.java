@@ -14,6 +14,7 @@ import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.MoveToBlockGoal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -171,6 +172,12 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
      */
     private void tickTunneling() {
         if (!(this.mob.level() instanceof ServerLevel level)) {
+            return;
+        }
+        // Digging destroys world blocks -- bail (clearing any crack overlays)
+        // if mob griefing is disallowed
+        if (!level.getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+            this.resetBreaking(level);
             return;
         }
 
