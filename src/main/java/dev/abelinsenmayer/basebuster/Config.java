@@ -40,6 +40,14 @@ public class Config {
             .comment("Max health for a raider boss")
             .defineInRange("raiderBoss.maxHealth", 120.0, 1.0, 1024.0);
 
+    public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
+            .comment("Distance a raider will search for a raider boss to elect as its squad leader")
+            .defineInRange("raiderSquad.searchRadius", 48.0, 1.0, 256.0);
+
+    public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER
+            .comment("Movement speed multiplier applied to a raider while it is fleeing")
+            .defineInRange("raiderFlee.speedMultiplier", 1.3, 1.0, 10.0);
+
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
             .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);

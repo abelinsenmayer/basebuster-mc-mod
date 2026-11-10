@@ -27,4 +27,10 @@ public class RaiderBossEntity extends RaiderEntity {
     protected double getConfiguredMaxHealth() {
         return Config.RAIDER_BOSS_MAX_HEALTH.get();
     }
+
+    @Override
+    public boolean canJoinSquad() {
+        // Bosses are leaders; they don't join squads and never flee
+        return false;
+    }
 }

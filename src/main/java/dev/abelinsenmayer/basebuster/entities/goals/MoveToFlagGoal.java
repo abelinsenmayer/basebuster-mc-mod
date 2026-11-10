@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
@@ -28,7 +29,6 @@ import net.minecraft.world.level.pathfinder.Path;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -82,18 +82,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
 
     @Nullable
     private BlockPos nearestFlag() {
-        if (!(this.mob.level() instanceof ServerLevel serverLevel)) {
-            return null;
-        }
-
-        FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
-        BlockPos mobPos = this.mob.blockPosition();
-        return flagsSavedData.getFlagLocations().stream()
-                // Raiders don't march on flags their faction already owns
-                .filter(flagPos -> !flagsSavedData.getCapturedFlagLocations().contains(flagPos))
-                .filter(this.mob::isWithinRestriction)
-                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(mobPos)))
-                .orElse(null);
+        // Raiders don't march on flags their faction already owns
+        return this.mob instanceof RaiderEntity raider ? raider.nearestUncapturedFlag() : null;
     }
 
     @Override
