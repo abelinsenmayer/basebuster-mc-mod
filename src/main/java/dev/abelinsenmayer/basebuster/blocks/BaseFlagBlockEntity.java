@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -249,6 +250,14 @@ public class BaseFlagBlockEntity extends BlockEntity {
         return RAIDER_FACTION.equals(this.ownerFaction);
     }
 
+    /**
+     * Whether a non-player faction (e.g. {@link #RAIDER_FACTION}) owns this flag.
+     * Faction-controlled areas block player respawn points.
+     */
+    public boolean isFactionOwned() {
+        return this.ownerFaction != null;
+    }
+
     public boolean isUnowned() {
         return this.ownerName == null && this.ownerFaction == null;
     }
@@ -386,6 +395,9 @@ public class BaseFlagBlockEntity extends BlockEntity {
         BlockPos pos = getBlockPos();
         serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
         FlagsSavedData.getFromLevel(serverLevel).addCapturedFlagLocation(pos);
+
+        // The area is now faction-controlled: no one may keep a respawn point in it
+        FlagSpawnProtection.clearSpawnsInArea(serverLevel, pos);
 
         if (formerOwner != null) {
             formerOwner.displayClientMessage(
