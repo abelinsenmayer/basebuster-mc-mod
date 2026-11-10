@@ -157,7 +157,7 @@ public final class RaidSpawner {
      * finds nothing at all.
      */
     private static BlockPos pickAnchor(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance) {
-        RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator();
+        RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator(probe);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
         PathFinder finder = new PathFinder(evaluator, PATH_NODE_BUDGET);

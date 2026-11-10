@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.pathfinding;
 
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -57,6 +58,24 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // Positions already proposed as synthetic nodes during this search, so a
     // cell is never emitted twice (each repeat costs a separate node expansion)
     private final Set<Long> extraEmissions = new HashSet<>();
+
+    public RaiderNodeEvaluator(Mob mob) {
+        // prepare() normally assigns this.mob; seeding it in the ctor keeps
+        // canFloat() correct even before the first pathfind (jumpInFluid
+        // consults it on every submerged jump)
+        this.mob = mob;
+    }
+
+    /**
+     * FloatGoal flips canFloat on for every raider at goal registration, but
+     * sinking raiders must keep it off: it controls both the gentle-rise
+     * impulse in Mob#jumpInFluid and whether water cells stay surface nodes
+     * or drop to the first walkable floor below.
+     */
+    @Override
+    public boolean canFloat() {
+        return super.canFloat() && !(this.mob instanceof RaiderEntity raider && raider.sinksInWater());
+    }
 
     @Override
     public void prepare(PathNavigationRegion region, Mob mob) {

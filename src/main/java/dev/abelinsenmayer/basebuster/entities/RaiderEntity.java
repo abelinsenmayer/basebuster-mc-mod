@@ -17,6 +17,7 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobSpawnType;
@@ -24,6 +25,7 @@ import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveThroughVillageGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
@@ -45,6 +47,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ProjectileWeaponItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.neoforged.neoforge.fluids.FluidType;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
@@ -95,6 +98,14 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // Priorities mirror Zombie's so tuning stays comparable; lower number = higher priority.
     @Override
     protected void registerGoals() {
+        // Surface swimmers keep their head above water like most vanilla
+        // mobs; sinkers skip this goal and walk the bottom instead
+        this.goalSelector.addGoal(1, new FloatGoal(this) {
+            @Override
+            public boolean canUse() {
+                return !RaiderEntity.this.sinksInWater() && super.canUse();
+            }
+        });
         // Execution goals
         // Leaderless raiders on an assault get cold feet before anything else
         this.goalSelector.addGoal(2, new FleeGoal(this));
@@ -145,6 +156,42 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     @Override
     protected boolean isSunSensitive() {
         return false;
+    }
+
+    /**
+     * Whether this raider sinks in water and walks the bottom like a vanilla
+     * zombie, instead of swimming at the surface. Undead-themed raiders (and
+     * the zombified piglin, which is undead despite its piglin theme) sink;
+     * everyone else stays afloat.
+     */
+    public boolean sinksInWater() {
+        RaiderSkin skin = this.getSkin();
+        return skin.theme() == RaiderSkinTheme.UNDEAD || skin == RaiderSkin.ZOMBIFIED_PIGLIN;
+    }
+
+    // Sinking raiders don't need air, like vanilla undead; swimming raiders
+    // drown like vanilla mobs. NeoForge queries this in onLivingBreathe.
+    @Override
+    public boolean canDrownInFluidType(FluidType fluidType) {
+        return !this.sinksInWater() && super.canDrownInFluidType(fluidType);
+    }
+
+    // Raiders never convert into vanilla Drowned: conversion would replace
+    // this entity, discarding its skin, kit, and squad membership
+    @Override
+    protected boolean convertsInWater() {
+        return false;
+    }
+
+    // Raiders are on the same faction: any attack sourced from a raider —
+    // melee or a stray arrow (getEntity() resolves to the shooter) — deals no
+    // damage, which also keeps HurtByTargetGoal from triggering infighting.
+    @Override
+    public boolean hurt(DamageSource source, float amount) {
+        if (source.getEntity() instanceof RaiderEntity) {
+            return false;
+        }
+        return super.hurt(source, amount);
     }
 
     @Override
