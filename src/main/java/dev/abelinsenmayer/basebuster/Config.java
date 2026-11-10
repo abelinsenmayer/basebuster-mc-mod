@@ -32,6 +32,14 @@ public class Config {
             .comment("Whether raiders may plan paths through breakable blocks and dig through them")
             .define("raiderTunneling.enabled", true);
 
+    public static final ModConfigSpec.DoubleValue RAIDER_MAX_HEALTH = BUILDER
+            .comment("Max health for a raider")
+            .defineInRange("raider.maxHealth", 20.0, 1.0, 1024.0);
+
+    public static final ModConfigSpec.DoubleValue RAIDER_BOSS_MAX_HEALTH = BUILDER
+            .comment("Max health for a raider boss")
+            .defineInRange("raiderBoss.maxHealth", 120.0, 1.0, 1024.0);
+
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
             .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);

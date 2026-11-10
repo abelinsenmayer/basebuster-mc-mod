@@ -25,5 +25,7 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.addItem(BaseBuster.DIAMOND_REPAIR_HAMMER, "Diamond Repair Hammer");
         this.addEntityType(BaseBuster.RAIDER, "Raider");
         this.addItem(BaseBuster.RAIDER_SPAWN_EGG, "Raider Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_BOSS, "Raider Boss");
+        this.addItem(BaseBuster.RAIDER_BOSS_SPAWN_EGG, "Raider Boss Spawn Egg");
     }
 }

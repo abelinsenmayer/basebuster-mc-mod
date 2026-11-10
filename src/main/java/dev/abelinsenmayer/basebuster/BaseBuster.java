@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
@@ -90,6 +91,17 @@ public class BaseBuster {
     public static final DeferredItem<DeferredSpawnEggItem> RAIDER_SPAWN_EGG = ITEMS.register("raider_spawn_egg",
             () -> new DeferredSpawnEggItem(RAIDER, 0x365A36, 0x8B5A2B, new Item.Properties()));
 
+    // The raider boss: looks like a husk but scaled to about 2.5 blocks tall, with far more HP.
+    // Dimensions are the base zombie size; the entity applies the SCALE attribute itself on construction.
+    public static final Supplier<EntityType<RaiderBossEntity>> RAIDER_BOSS = ENTITY_TYPES.register("raider_boss",
+            () -> EntityType.Builder.of(RaiderBossEntity::new, MobCategory.MONSTER)
+                    .sized(0.6F, 1.95F)
+                    .eyeHeight(1.74F)
+                    .clientTrackingRange(8)
+                    .build("raider_boss"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_BOSS_SPAWN_EGG = ITEMS.register("raider_boss_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_BOSS, 0x6B5637, 0x3E2F1E, new Item.Properties()));
+
     // Creates a new food item with the id "basebuster:example_id", nutrition 1 and saturation 2
     public static final DeferredItem<Item> EXAMPLE_ITEM = ITEMS.registerSimpleItem("example_item", new Item.Properties().food(new FoodProperties.Builder()
             .alwaysEdible().nutrition(1).saturationModifier(2f).build()));
@@ -105,6 +117,7 @@ public class BaseBuster {
                 output.accept(IRON_REPAIR_HAMMER.get());
                 output.accept(DIAMOND_REPAIR_HAMMER.get());
                 output.accept(RAIDER_SPAWN_EGG.get());
+                output.accept(RAIDER_BOSS_SPAWN_EGG.get());
             }).build());
 
     public static final Supplier<BlockEntityType<BaseFlagBlockEntity>> BASE_FLAG_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
@@ -165,9 +178,10 @@ public class BaseBuster {
         }
     }
 
-    // Give the raider the same attributes as a zombie
+    // Give raiders the same attributes as a zombie; configured max health is applied at spawn time
     private void onRegisterEntityAttributes(EntityAttributeCreationEvent event) {
         event.put(RAIDER.get(), Zombie.createAttributes().build());
+        event.put(RAIDER_BOSS.get(), Zombie.createAttributes().build());
     }
 
     public void onGatherData(GatherDataEvent event) {

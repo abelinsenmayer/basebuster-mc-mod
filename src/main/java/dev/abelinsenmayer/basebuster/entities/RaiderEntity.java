@@ -1,10 +1,16 @@
 package dev.abelinsenmayer.basebuster.entities;
 
+import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.goals.CaptureFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.MoveToFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.WanderNearFlagGoal;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNavigation;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnGroupData;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveThroughVillageGoal;
@@ -19,6 +25,9 @@ import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
+
+import javax.annotation.Nullable;
 
 public class RaiderEntity extends Zombie {
     public RaiderEntity(EntityType<? extends Zombie> entityType, Level level) {
@@ -55,5 +64,21 @@ public class RaiderEntity extends Zombie {
     @Override
     protected boolean isSunSensitive() {
         return false;
+    }
+
+    @Override
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, @Nullable SpawnGroupData spawnGroupData) {
+        SpawnGroupData result = super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
+        AttributeInstance maxHealth = this.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth != null) {
+            maxHealth.setBaseValue(this.getConfiguredMaxHealth());
+            this.setHealth((float) this.getConfiguredMaxHealth());
+        }
+        return result;
+    }
+
+    // Max health this raider spawns with; subclasses (e.g. bosses) can override.
+    protected double getConfiguredMaxHealth() {
+        return Config.RAIDER_MAX_HEALTH.get();
     }
 }

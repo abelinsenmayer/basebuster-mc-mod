@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.client;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.HuskRenderer;
 import net.minecraft.client.renderer.entity.ZombieRenderer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -37,5 +38,7 @@ public class BaseBusterClient {
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         // The raider looks exactly like a zombie
         event.registerEntityRenderer(BaseBuster.RAIDER.get(), ZombieRenderer::new);
+        // The raider boss looks like a husk, scaled up
+        event.registerEntityRenderer(BaseBuster.RAIDER_BOSS.get(), HuskRenderer::new);
     }
 }

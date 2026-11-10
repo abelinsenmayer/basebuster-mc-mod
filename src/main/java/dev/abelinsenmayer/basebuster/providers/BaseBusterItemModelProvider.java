@@ -18,6 +18,7 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
         handheldWithTexture(BaseBuster.IRON_REPAIR_HAMMER, "item/iron_shovel");
         handheldWithTexture(BaseBuster.DIAMOND_REPAIR_HAMMER, "item/diamond_shovel");
         withExistingParent(BaseBuster.RAIDER_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
+        withExistingParent(BaseBuster.RAIDER_BOSS_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
     }
 
     private void handheldWithTexture(DeferredItem<?> item, String vanillaTexture) {
