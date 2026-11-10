@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "basebuster:block/base_flag_block"
+    }
+  }
+}

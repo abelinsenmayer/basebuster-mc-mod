@@ -1,0 +1,13 @@
+{
+  "itemGroup.basebuster": "Example Mod Tab",
+  "block.basebuster.example_block": "Example Block",
+  "item.basebuster.example_item": "Example Item",
+
+  "basebuster.configuration.title": "Base Buster Configs",
+  "basebuster.configuration.section.basebuster.common.toml": "Base Buster Configs",
+  "basebuster.configuration.section.basebuster.common.toml.title": "Base Buster Configs",
+  "basebuster.configuration.items": "Item List",
+  "basebuster.configuration.logDirtBlock": "Log Dirt Block",
+  "basebuster.configuration.magicNumberIntroduction": "Magic Number Text",
+  "basebuster.configuration.magicNumber": "Magic Number"
+}
