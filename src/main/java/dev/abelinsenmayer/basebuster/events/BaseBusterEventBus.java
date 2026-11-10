@@ -76,7 +76,7 @@ public class BaseBusterEventBus {
      * @param blockEntity the block entity that was at {@code pos}, if any
      * @return whether the block was registered as a repair target on a flag
      */
-    private static boolean handleBlockGriefing(Entity culprit, BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {
+    public static boolean handleBlockGriefing(Entity culprit, BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {
         if (state.getBlock() == Blocks.AIR) {
             return false;
         }

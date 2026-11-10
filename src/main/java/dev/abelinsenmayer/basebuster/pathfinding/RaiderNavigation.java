@@ -18,6 +18,7 @@ public class RaiderNavigation extends GroundPathNavigation {
     protected PathFinder createPathFinder(int maxVisitedNodes) {
         this.nodeEvaluator = new RaiderNodeEvaluator();
         this.nodeEvaluator.setCanPassDoors(true);
+        this.nodeEvaluator.setCanOpenDoors(true);
         return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
     }
 }

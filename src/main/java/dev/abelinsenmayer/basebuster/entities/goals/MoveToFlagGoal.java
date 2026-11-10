@@ -1,17 +1,26 @@
 package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.MoveToBlockGoal;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.ScaffoldingBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
@@ -92,8 +101,67 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         if (this.tryTicks % RETARGET_INTERVAL_TICKS == 0) {
             this.retargetNearestFlag();
         }
+        this.tickDoorUse();
         this.tickTunneling();
         this.tickScaffolding();
+    }
+
+    /**
+     * Player-like door use: opens hand-openable doors and trapdoors at upcoming
+     * path nodes before the mob reaches them. The evaluator prices these cells
+     * as passable, so this just clears the physical barrier in time.
+     */
+    private void tickDoorUse() {
+        if (!(this.mob.level() instanceof ServerLevel level)) {
+            return;
+        }
+        Path path = this.mob.getNavigation().getPath();
+        if (path == null || path.isDone()) {
+            return;
+        }
+
+        BlockPos mobFeet = this.mob.blockPosition();
+        int start = Math.max(0, path.getNextNodeIndex() - 1);
+        int end = Math.min(path.getNodeCount(), path.getNextNodeIndex() + TUNNEL_LOOKAHEAD_NODES);
+        for (int i = start; i < end; i++) {
+            Node node = path.getNode(i);
+            BlockPos pos = new BlockPos(node.x, node.y, node.z);
+            if (pos.distManhattan(mobFeet) <= TUNNEL_BREAK_REACH) {
+                this.openIfClosed(level, pos);
+            }
+            // Head-level trapdoors and ceiling hatches sit one cell above the
+            // node's feet position but still gate the mob's box
+            BlockPos head = pos.above();
+            if (head.distManhattan(mobFeet) <= TUNNEL_BREAK_REACH) {
+                this.openIfClosed(level, head);
+            }
+        }
+    }
+
+    private void openIfClosed(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof DoorBlock door
+                && door.type().canOpenByHand()
+                && !state.getValue(DoorBlock.OPEN)) {
+            door.setOpen(this.mob, level, state, pos, true);
+            return;
+        }
+        if (state.getBlock() instanceof TrapDoorBlock
+                && !state.is(Blocks.IRON_TRAPDOOR)
+                && !state.getValue(TrapDoorBlock.OPEN)) {
+            level.setBlock(pos, state.setValue(TrapDoorBlock.OPEN, true), 3);
+            level.playSound(null, pos, SoundEvents.WOODEN_TRAPDOOR_OPEN, SoundSource.BLOCKS, 1.0F, 0.9F);
+        }
+    }
+
+    /**
+     * Whether the mob could open this block by hand rather than dig through it.
+     */
+    private boolean isOpenableByHand(BlockState state) {
+        if (state.getBlock() instanceof DoorBlock door) {
+            return door.type().canOpenByHand();
+        }
+        return state.getBlock() instanceof TrapDoorBlock && !state.is(Blocks.IRON_TRAPDOOR);
     }
 
     /**
@@ -143,12 +211,27 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
 
         if (this.breakTime >= requiredTicks) {
             for (BlockPos pos : blocks) {
-                level.destroyBlock(pos, false, this.mob);
+                this.breakTunnelBlock(level, pos);
             }
             this.resetBreaking(level);
             // The wall is open: push a fresh path so the raider walks through
             // without waiting for the next recalculation
             this.moveMobToBlock();
+        }
+    }
+
+    /**
+     * Removes a block dug out by tunneling. If a nearby flag claims the
+     * destruction for repair, the block is deleted without drops so the flag can
+     * restore it later; otherwise it drops as though mined with a stone pickaxe.
+     */
+    private void breakTunnelBlock(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        boolean claimed = BaseBusterEventBus.handleBlockGriefing(this.mob, pos, state, blockEntity);
+        level.destroyBlock(pos, false, this.mob);
+        if (!claimed) {
+            Block.dropResources(state, level, pos, blockEntity, this.mob, new ItemStack(Items.STONE_PICKAXE));
         }
     }
 
@@ -176,7 +259,9 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             this.ensureScaffolding(level, mobFeet);
             this.ensureScaffolding(level, mobFeet.above());
             this.mob.getJumpControl().jump();
-            if (level.getBlockState(mobFeet).getBlock() instanceof ScaffoldingBlock
+            // Scaffolding counts as climbable, so the tag check covers both a
+            // placed pillar and pre-existing ladders/vines
+            if (level.getBlockState(mobFeet).is(BlockTags.CLIMBABLE)
                     && this.mob.getDeltaMovement().y < SCAFFOLD_CLIMB_SPEED) {
                 this.mob.setDeltaMovement(
                         this.mob.getDeltaMovement().x, SCAFFOLD_CLIMB_SPEED, this.mob.getDeltaMovement().z);
@@ -288,7 +373,9 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         for (int dy = 0; dy < Mth.ceil(this.mob.getBbHeight()); dy++) {
             BlockPos pos = nodePos.above(dy);
             BlockState state = level.getBlockState(pos);
-            if (state.getCollisionShape(level, pos).isEmpty()) {
+            if (state.getCollisionShape(level, pos).isEmpty()
+                    || this.isOpenableByHand(state)
+                    || state.is(BlockTags.CLIMBABLE)) {
                 continue;
             }
             if (state.getDestroySpeed(level, pos) < 0.0F) {

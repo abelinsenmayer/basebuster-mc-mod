@@ -3,9 +3,13 @@ package dev.abelinsenmayer.basebuster.pathfinding;
 import dev.abelinsenmayer.basebuster.Config;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.PathNavigationRegion;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.ScaffoldingBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.PathType;
@@ -41,6 +45,9 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     private static final float TUNNEL_MALUS_PER_HARDNESS = 4.0F;
     // Traversing/alongside existing scaffolding is cheap -- just slower footing
     private static final float SCAFFOLD_MALUS = 1.0F;
+    // One cell of an existing climbable (ladder, vines) -- vanilla maps these
+    // to BLOCKED, so without this raiders dig through the ladder and its wall
+    private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
     private static final float BRIDGE_MALUS = 2.0F;
     // One level of a scaffold pillar the mob has to build and climb
@@ -84,8 +91,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
         int y = node.y;
         int z = node.z;
 
-        if (this.isScaffolding(x, y - 1, z)) {
-            count = this.emitNode(outputArray, count, x, y - 1, z, SCAFFOLD_MALUS);
+        if (this.isScaffolding(x, y - 1, z) || this.isClimbable(x, y - 1, z)) {
+            count = this.emitNode(outputArray, count, x, y - 1, z, CLIMBABLE_MALUS);
         }
 
         // Pillars can't start mid-fall; only grounded or scaffold-held nodes
@@ -93,8 +100,12 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             return count;
         }
 
-        if (this.isScaffolding(x, y + 1, z)) {
-            count = this.emitNode(outputArray, count, x, y + 1, z, SCAFFOLD_MALUS);
+        if (this.isScaffolding(x, y + 1, z) || this.isClimbable(x, y + 1, z)) {
+            count = this.emitNode(outputArray, count, x, y + 1, z, CLIMBABLE_MALUS);
+        } else if (this.isOpenableByHand(x, y + 1, z)) {
+            // Ceiling hatch (e.g. atop a ladder): opens on approach, then the
+            // mob climbs through it
+            count = this.emitNode(outputArray, count, x, y + 1, z, CLIMBABLE_MALUS);
         } else if (this.isReplaceableForScaffold(x, y + 1, z) && this.isReplaceableForScaffold(x, y + 2, z)) {
             count = this.emitNode(outputArray, count, x, y + 1, z, PILLAR_MALUS);
         }
@@ -113,8 +124,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             return count;
         }
 
-        if (this.isScaffolding(x, y, z)) {
-            return this.emitNode(outputArray, count, x, y, z, SCAFFOLD_MALUS);
+        if (this.isScaffolding(x, y, z) || this.isClimbable(x, y, z)) {
+            return this.emitNode(outputArray, count, x, y, z, CLIMBABLE_MALUS);
         }
 
         if (this.isOpenColumn(x, y, z)) {
@@ -129,11 +140,51 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             return count;
         }
 
+        if (this.isOpenableByHand(x, y, z)) {
+            // Door and trapdoor cells are handled by vanilla types plus the
+            // goal's open-on-approach behavior -- never dig through them
+            return count;
+        }
+
+        if (this.isPassableOrOpenable(x, y, z) && this.isPassableOrOpenable(x, y + 1, z)) {
+            // Feet cell open but the head cell holds a closed trapdoor/door:
+            // a cheap walk once opened on approach, never a dig
+            return this.emitNode(outputArray, count, x, y, z, SCAFFOLD_MALUS);
+        }
+
         float tunnelMalus = this.tunnelMalus(x, y, z);
         if (tunnelMalus >= 0.0F) {
             return this.emitNode(outputArray, count, x, y, z, tunnelMalus);
         }
         return count;
+    }
+
+    /**
+     * Whether the cell would be occupiable either as-is (open air / no
+     * collision) or after the block is opened by hand (closed door, closed
+     * trapdoor). Used to price head-level hatches as a walk, not a dig.
+     */
+    private boolean isPassableOrOpenable(int x, int y, int z) {
+        if (this.isOpenableByHand(x, y, z)) {
+            return true;
+        }
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState state = this.currentContext.getBlockState(pos);
+        return state.getCollisionShape(this.currentContext.level(), pos).isEmpty();
+    }
+
+    /**
+     * Whether the block at (x, y, z) is a door or trapdoor a raider can open by
+     * hand. Mirrors vanilla's own check in getPathType: any door whose
+     * BlockSetType is openable by hand (wood, copper) counts, as does any
+     * trapdoor except the iron one.
+     */
+    private boolean isOpenableByHand(int x, int y, int z) {
+        BlockState state = this.currentContext.getBlockState(new BlockPos(x, y, z));
+        if (state.getBlock() instanceof DoorBlock door) {
+            return door.type().canOpenByHand();
+        }
+        return state.getBlock() instanceof TrapDoorBlock && !state.is(Blocks.IRON_TRAPDOOR);
     }
 
     /**
@@ -164,6 +215,14 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
 
     private boolean isScaffolding(int x, int y, int z) {
         return this.currentContext.getBlockState(new BlockPos(x, y, z)).getBlock() instanceof ScaffoldingBlock;
+    }
+
+    /**
+     * Ladders, vines, and other #climbable blocks: vanilla maps these to
+     * BLOCKED, but the mob can physically climb them just like scaffolding.
+     */
+    private boolean isClimbable(int x, int y, int z) {
+        return this.currentContext.getBlockState(new BlockPos(x, y, z)).is(BlockTags.CLIMBABLE);
     }
 
     /**
