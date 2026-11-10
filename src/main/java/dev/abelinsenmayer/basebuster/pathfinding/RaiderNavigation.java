@@ -6,8 +6,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.PathFinder;
 
 /**
- * Ground navigation that plans paths through breakable obstructions via
- * {@link TunnelingNodeEvaluator}.
+ * Ground navigation that plans paths through breakable obstructions and
+ * scaffold-building moves via {@link RaiderNodeEvaluator}.
  */
 public class RaiderNavigation extends GroundPathNavigation {
     public RaiderNavigation(Mob mob, Level level) {
@@ -16,7 +16,7 @@ public class RaiderNavigation extends GroundPathNavigation {
 
     @Override
     protected PathFinder createPathFinder(int maxVisitedNodes) {
-        this.nodeEvaluator = new TunnelingNodeEvaluator();
+        this.nodeEvaluator = new RaiderNodeEvaluator();
         this.nodeEvaluator.setCanPassDoors(true);
         return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
     }

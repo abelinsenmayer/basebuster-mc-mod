@@ -4,11 +4,14 @@ import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.MoveToBlockGoal;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
@@ -42,6 +45,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     private static final int TUNNEL_BREAK_BASE_TICKS = 60;
     // Additional break ticks per point of hardness in the obstructing column
     private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
+    // Upward velocity while the mob climbs inside a scaffolding column
+    private static final float SCAFFOLD_CLIMB_SPEED = 0.25F;
 
     private int idleRepathTimestamp = -IDLE_REPATH_INTERVAL_TICKS;
     @Nullable
@@ -88,6 +93,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             this.retargetNearestFlag();
         }
         this.tickTunneling();
+        this.tickScaffolding();
     }
 
     /**
@@ -143,6 +149,90 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             // The wall is open: push a fresh path so the raider walks through
             // without waiting for the next recalculation
             this.moveMobToBlock();
+        }
+    }
+
+    /**
+     * Builds the scaffold moves the path evaluator priced in: a scaffolding
+     * bridge laid under the feet of gap nodes, and a pillar built in the mob's
+     * own column when the path climbs vertically.
+     */
+    private void tickScaffolding() {
+        if (!(this.mob.level() instanceof ServerLevel level)) {
+            return;
+        }
+        Path path = this.mob.getNavigation().getPath();
+        if (path == null || path.isDone()) {
+            return;
+        }
+
+        int nextIndex = path.getNextNodeIndex();
+        Node next = path.getNode(nextIndex);
+        BlockPos mobFeet = this.mob.blockPosition();
+
+        // Pillar ascent: the next node is directly overhead in the mob's column,
+        // reachable only by climbing a scaffold stack built in place
+        if (next.x == mobFeet.getX() && next.z == mobFeet.getZ() && next.y > mobFeet.getY()) {
+            this.ensureScaffolding(level, mobFeet);
+            this.ensureScaffolding(level, mobFeet.above());
+            this.mob.getJumpControl().jump();
+            if (level.getBlockState(mobFeet).getBlock() instanceof ScaffoldingBlock
+                    && this.mob.getDeltaMovement().y < SCAFFOLD_CLIMB_SPEED) {
+                this.mob.setDeltaMovement(
+                        this.mob.getDeltaMovement().x, SCAFFOLD_CLIMB_SPEED, this.mob.getDeltaMovement().z);
+            }
+            return;
+        }
+
+        // Bridge: an upcoming node hovers over air -- lay scaffolding under it
+        int end = Math.min(path.getNodeCount(), nextIndex + TUNNEL_LOOKAHEAD_NODES);
+        for (int i = nextIndex; i < end; i++) {
+            Node node = path.getNode(i);
+            BlockPos pos = new BlockPos(node.x, node.y, node.z);
+            if (pos.distManhattan(mobFeet) > TUNNEL_BREAK_REACH) {
+                continue;
+            }
+            BlockPos below = pos.below();
+            BlockState belowState = level.getBlockState(below);
+            if (this.isTraversable(level, pos)
+                    && !(belowState.getBlock() instanceof ScaffoldingBlock)
+                    && (belowState.isAir() || belowState.canBeReplaced())
+                    && belowState.getFluidState().isEmpty()) {
+                this.ensureScaffolding(level, below);
+            }
+        }
+    }
+
+    /**
+     * Whether the mob could occupy the column at pos with a floor under it:
+     * no collision and no scaffolding in the cells of the mob's height.
+     */
+    private boolean isTraversable(ServerLevel level, BlockPos pos) {
+        for (int dy = 0; dy < Mth.ceil(this.mob.getBbHeight()); dy++) {
+            BlockPos check = pos.above(dy);
+            BlockState state = level.getBlockState(check);
+            if (state.getBlock() instanceof ScaffoldingBlock
+                    || !state.getCollisionShape(level, check).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void ensureScaffolding(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof ScaffoldingBlock) {
+            return;
+        }
+        if ((!state.isAir() && !state.canBeReplaced()) || !state.getFluidState().isEmpty()) {
+            return;
+        }
+        level.setBlock(pos, Blocks.SCAFFOLDING.defaultBlockState(), 3);
+        level.playSound(null, pos,
+                Blocks.SCAFFOLDING.asItem().getBreakingSound(),
+                SoundSource.BLOCKS, 1.0F, 0.8F);
+        if (this.mob.getRandom().nextInt(4) == 0) {
+            this.mob.swing(InteractionHand.MAIN_HAND);
         }
     }
 
