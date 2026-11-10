@@ -2,8 +2,6 @@ package dev.abelinsenmayer.basebuster.client;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.HuskRenderer;
-import net.minecraft.client.renderer.entity.ZombieRenderer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -36,9 +34,9 @@ public class BaseBusterClient {
 
     @SubscribeEvent
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        // The raider looks exactly like a zombie
-        event.registerEntityRenderer(BaseBuster.RAIDER.get(), ZombieRenderer::new);
-        // The raider boss looks like a husk, scaled up
-        event.registerEntityRenderer(BaseBuster.RAIDER_BOSS.get(), HuskRenderer::new);
+        // Each raider renders as its assigned RaiderSkin; raids assign one skin
+        // theme per raid, egg/summon spawns get a random skin per entity
+        event.registerEntityRenderer(BaseBuster.RAIDER.get(), RaiderRenderer::new);
+        event.registerEntityRenderer(BaseBuster.RAIDER_BOSS.get(), RaiderRenderer::new);
     }
 }

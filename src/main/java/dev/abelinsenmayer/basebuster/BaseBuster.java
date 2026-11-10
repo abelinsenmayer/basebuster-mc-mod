@@ -81,7 +81,8 @@ public class BaseBuster {
     public static final DeferredItem<RepairHammerItem> IRON_REPAIR_HAMMER = ITEMS.register("iron_repair_hammer", () -> new RepairHammerItem(Tiers.IRON, new Item.Properties()));
     public static final DeferredItem<RepairHammerItem> DIAMOND_REPAIR_HAMMER = ITEMS.register("diamond_repair_hammer", () -> new RepairHammerItem(Tiers.DIAMOND, new Item.Properties()));
 
-    // The raider entity: looks and behaves like a zombie, but does not burn in sunlight
+    // The raider entity: behaves like a zombie but does not burn in sunlight.
+    // Renders as one of its RaiderSkins (themed per raid, random for egg/summon spawns)
     public static final Supplier<EntityType<RaiderEntity>> RAIDER = ENTITY_TYPES.register("raider",
             () -> EntityType.Builder.of(RaiderEntity::new, MobCategory.MONSTER)
                     .sized(0.6F, 1.95F)
@@ -91,7 +92,7 @@ public class BaseBuster {
     public static final DeferredItem<DeferredSpawnEggItem> RAIDER_SPAWN_EGG = ITEMS.register("raider_spawn_egg",
             () -> new DeferredSpawnEggItem(RAIDER, 0x365A36, 0x8B5A2B, new Item.Properties()));
 
-    // The raider boss: looks like a husk but scaled to about 2.5 blocks tall, with far more HP.
+    // The raider boss: same skin pool as raiders, scaled to about 2.5 blocks tall, with far more HP.
     // Dimensions are the base zombie size; the entity applies the SCALE attribute itself on construction.
     public static final Supplier<EntityType<RaiderBossEntity>> RAIDER_BOSS = ENTITY_TYPES.register("raider_boss",
             () -> EntityType.Builder.of(RaiderBossEntity::new, MobCategory.MONSTER)

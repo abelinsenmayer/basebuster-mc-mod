@@ -7,8 +7,8 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.Level;
 
-// A beefier raider: rendered as a Husk and scaled up to roughly 2.5 blocks tall.
-// Goals and behavior are inherited from RaiderEntity.
+// A beefier raider: scaled up to roughly 2.5 blocks tall. Skins come from the
+// same RaiderSkin pool as normal raiders; goals and behavior are inherited.
 public class RaiderBossEntity extends RaiderEntity {
     // Base zombie height is 1.95 blocks; 1.95 * SCALE ~= 2.5
     private static final double BOSS_SCALE = 2.5 / 1.95;
@@ -25,7 +25,8 @@ public class RaiderBossEntity extends RaiderEntity {
 
     @Override
     protected double getConfiguredMaxHealth() {
-        return Config.RAIDER_BOSS_MAX_HEALTH.get();
+        // Bosses get a full kit like normal raiders, plus a health bonus
+        return this.getKit().maxHealth() + Config.RAIDER_BOSS_BONUS_HEALTH.get();
     }
 
     @Override

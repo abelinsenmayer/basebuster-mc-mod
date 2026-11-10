@@ -32,13 +32,9 @@ public class Config {
             .comment("Whether raiders may plan paths through breakable blocks and dig through them")
             .define("raiderTunneling.enabled", true);
 
-    public static final ModConfigSpec.DoubleValue RAIDER_MAX_HEALTH = BUILDER
-            .comment("Max health for a raider")
-            .defineInRange("raider.maxHealth", 20.0, 1.0, 1024.0);
-
-    public static final ModConfigSpec.DoubleValue RAIDER_BOSS_MAX_HEALTH = BUILDER
-            .comment("Max health for a raider boss")
-            .defineInRange("raiderBoss.maxHealth", 120.0, 1.0, 1024.0);
+    public static final ModConfigSpec.DoubleValue RAIDER_BOSS_BONUS_HEALTH = BUILDER
+            .comment("Extra health a raider boss gets on top of its kit's max health")
+            .defineInRange("raiderBoss.bonusHealth", 100.0, 0.0, 1024.0);
 
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
