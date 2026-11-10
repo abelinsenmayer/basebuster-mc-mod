@@ -1,0 +1,245 @@
+package dev.abelinsenmayer.basebuster.raids;
+
+import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.level.PathNavigationRegion;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.pathfinder.PathFinder;
+import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Spawns a raiding party (one {@link RaiderBossEntity} plus {@link #MEMBER_COUNT}
+ * {@link RaiderEntity}s) just outside a flag's protection radius, biased toward
+ * the cheapest approach a raider could take to the flag.
+ *
+ * <p>Because the spawn ring sits well beyond a single pathing search's reach,
+ * this uses an approximate, single-search strategy:
+ *
+ * <ol>
+ *   <li>Sample {@link #RING_CANDIDATES} evenly spaced points on a ring at
+ *   {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} + a random 1-40 block buffer,
+ *   snapping each to a safe surface position.
+ *   <li>Run one {@link PathFinder} search from the flag with every candidate as
+ *   a potential target, using {@link RaiderNodeEvaluator} so tunneling,
+ *   bridging, and pillar moves are priced into the route.
+ *   <li>A* reaches the cheapest reachable candidate first (or reports the
+ *   best-approached candidate on a partial path), which approximates "the
+ *   nearest area a raider could actually get in from."
+ * </ol>
+ *
+ * <p>The search is synchronous and bounded by {@link #PATH_NODE_BUDGET}, so it
+ * runs once per raid trigger rather than per tick.
+ */
+public final class RaidSpawner {
+    // Randomized buffer added to the protection radius, per the raid spec
+    private static final int MIN_SPAWN_BUFFER = 1;
+    private static final int MAX_SPAWN_BUFFER = 40;
+    // Direction samples around the ring; more = better coverage of "nearest area"
+    private static final int RING_CANDIDATES = 16;
+    // Node expansion budget for the spawn-point search
+    private static final int PATH_NODE_BUDGET = 8192;
+    // Manhattan distance from a candidate at which the path counts as reached
+    private static final int TARGET_ACCURACY = 3;
+    // Raid composition: 1 boss + this many raiders
+    private static final int MEMBER_COUNT = 6;
+    // How far from the party anchor a raider may appear
+    private static final int MEMBER_SPREAD_RADIUS = 4;
+    // Attempts to find a safe spot for each raider before falling back to the anchor
+    private static final int MEMBER_SPAWN_ATTEMPTS = 16;
+    // Vertical offsets around the heightmap position probed for a safe anchor
+    private static final int[] SURFACE_Y_OFFSETS = {0, 1, -1, 2, -2};
+    // Padding added around the flag/anchor bounding box for the path region
+    private static final int REGION_PADDING = 16;
+    // Cap on path length and distance from the start, generous for detours
+    private static final int MAX_RANGE_MULTIPLIER = 4;
+
+    private RaidSpawner() {
+    }
+
+    /**
+     * Attempts to start a raid on the flag at {@code flagPos}.
+     *
+     * @return whether the raid was spawned
+     */
+    public static boolean startRaid(ServerLevel level, BlockPos flagPos) {
+        RandomSource random = level.getRandom();
+
+        // Probe with the boss: it's the largest member, so routes and spawn
+        // spots that fit the boss fit everyone
+        RaiderBossEntity boss = BaseBuster.RAIDER_BOSS.get().create(level);
+        if (boss == null) {
+            return false;
+        }
+        boss.moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
+
+        int distance = BaseFlagBlock.FLAG_PROTECTION_RADIUS + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
+        List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
+        if (anchors.isEmpty()) {
+            return false;
+        }
+
+        BlockPos anchor = pickAnchor(level, flagPos, anchors, boss, distance);
+        spawnMember(level, boss, anchor);
+
+        for (int i = 0; i < MEMBER_COUNT; i++) {
+            RaiderEntity raider = BaseBuster.RAIDER.get().create(level);
+            if (raider == null) {
+                continue;
+            }
+            BlockPos spot = findSafeSpawnNear(level, raider, anchor, random);
+            spawnMember(level, raider, spot);
+            raider.setSquadLeader(boss);
+        }
+
+        // One horn at the raid party, one at the besieged flag so the defender hears it too
+        level.playSound(null, anchor, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+        level.playSound(null, flagPos, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+        BaseBuster.LOGGER.info("Raid spawned at {} targeting flag at {}", anchor, flagPos);
+        return true;
+    }
+
+    /**
+     * Safe surface positions on a ring of the given radius around the flag,
+     * evenly spaced with a random starting angle. Candidates whose column can't
+     * host the party are skipped.
+     */
+    private static List<BlockPos> surfaceAnchors(ServerLevel level, BlockPos flagPos, int distance, Mob probe, RandomSource random) {
+        List<BlockPos> anchors = new ArrayList<>();
+        double startAngle = random.nextDouble() * Math.PI * 2;
+        for (int i = 0; i < RING_CANDIDATES; i++) {
+            double angle = startAngle + i * (Math.PI * 2 / RING_CANDIDATES);
+            int x = flagPos.getX() + (int) Math.round(Math.cos(angle) * distance);
+            int z = flagPos.getZ() + (int) Math.round(Math.sin(angle) * distance);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, new BlockPos(x, flagPos.getY(), z));
+            for (int dy : SURFACE_Y_OFFSETS) {
+                BlockPos feet = surface.above(dy);
+                if (isSafeSpawn(level, probe, feet)) {
+                    anchors.add(feet.immutable());
+                    break;
+                }
+            }
+        }
+        return anchors;
+    }
+
+    /**
+     * Picks the candidate that the raider path evaluator can reach from the flag
+     * for the least cost. A single multi-target A* yields the cheapest reached
+     * anchor; when the budget runs out first, the partial path still points at
+     * the best-approached candidate. Falls back to a random anchor if the search
+     * finds nothing at all.
+     */
+    private static BlockPos pickAnchor(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance) {
+        RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator();
+        evaluator.setCanPassDoors(true);
+        evaluator.setCanOpenDoors(true);
+        PathFinder finder = new PathFinder(evaluator, PATH_NODE_BUDGET);
+
+        // PathNavigationRegion expects the low corner first (it sizes its chunk
+        // array by subtraction), so build explicit min/max corners
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (BlockPos pos : anchors) {
+            minX = Math.min(minX, pos.getX());
+            minZ = Math.min(minZ, pos.getZ());
+            maxX = Math.max(maxX, pos.getX());
+            maxZ = Math.max(maxZ, pos.getZ());
+        }
+        minX = Math.min(minX, flagPos.getX()) - REGION_PADDING;
+        minZ = Math.min(minZ, flagPos.getZ()) - REGION_PADDING;
+        maxX = Math.max(maxX, flagPos.getX()) + REGION_PADDING;
+        maxZ = Math.max(maxZ, flagPos.getZ()) + REGION_PADDING;
+        PathNavigationRegion region = new PathNavigationRegion(
+                level,
+                new BlockPos(minX, level.getMinBuildHeight(), minZ),
+                new BlockPos(maxX, level.getMaxBuildHeight() - 1, maxZ));
+
+        Path path = finder.findPath(region, probe, Set.copyOf(anchors),
+                (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
+        if (path != null) {
+            // Reached anchor, or the best-approached one on a partial path
+            return path.getTarget();
+        }
+        return anchors.get(level.getRandom().nextInt(anchors.size()));
+    }
+
+    /**
+     * Whether {@code feet} is a safe spot for the mob to materialize: headroom,
+     * real footing below, and no hazards (fire, lava, cactus, powder snow,
+     * fluids) in or around its bounding box.
+     */
+    private static boolean isSafeSpawn(ServerLevel level, Mob probe, BlockPos feet) {
+        PathType type = WalkNodeEvaluator.getPathTypeStatic(probe, feet);
+        if (type.getMalus() < 0.0F) {
+            return false;
+        }
+        switch (type) {
+            case DANGER_FIRE, DANGER_OTHER, DANGER_POWDER_SNOW, DANGER_TRAPDOOR,
+                 DAMAGE_FIRE, DAMAGE_OTHER, DAMAGE_CAUTIOUS,
+                 LAVA, POWDER_SNOW, WATER, WATER_BORDER -> {
+                return false;
+            }
+            default -> {
+            }
+        }
+
+        BlockPos below = feet.below();
+        BlockState ground = level.getBlockState(below);
+        if (!ground.is(BlockTags.CLIMBABLE) && ground.getCollisionShape(level, below).isEmpty()) {
+            return false;
+        }
+
+        AABB box = probe.getDimensions(Pose.STANDING).makeBoundingBox(Vec3.atBottomCenterOf(feet));
+        return level.noCollision(probe, box);
+    }
+
+    /**
+     * A safe position near the anchor for a party member, or the anchor itself
+     * when nothing else pans out (the anchor is already boss-safe, and the boss
+     * is bigger than any raider).
+     */
+    private static BlockPos findSafeSpawnNear(ServerLevel level, Mob probe, BlockPos anchor, RandomSource random) {
+        for (int i = 0; i < MEMBER_SPAWN_ATTEMPTS; i++) {
+            int dx = random.nextInt(MEMBER_SPREAD_RADIUS * 2 + 1) - MEMBER_SPREAD_RADIUS;
+            int dz = random.nextInt(MEMBER_SPREAD_RADIUS * 2 + 1) - MEMBER_SPREAD_RADIUS;
+            BlockPos feet = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, anchor.offset(dx, 0, dz));
+            if (isSafeSpawn(level, probe, feet)) {
+                return feet;
+            }
+        }
+        return anchor;
+    }
+
+    private static void spawnMember(ServerLevel level, RaiderEntity member, BlockPos pos) {
+        member.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5,
+                level.getRandom().nextFloat() * 360.0F, 0.0F);
+        member.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), MobSpawnType.EVENT, null);
+        // Raid members are scripted spawns, not ambient mobs; don't let them despawn
+        member.setPersistenceRequired();
+        level.addFreshEntity(member);
+    }
+}

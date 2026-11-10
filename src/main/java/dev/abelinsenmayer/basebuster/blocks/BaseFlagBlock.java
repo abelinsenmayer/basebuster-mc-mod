@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
+import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -96,6 +97,11 @@ public class BaseFlagBlock extends Block implements EntityBlock {
 
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        // Testing hook: a raider spawn egg starts a raid on this flag
+        if (stack.is(BaseBuster.RAIDER_SPAWN_EGG.get())) {
+            return this.useRaiderSpawnEgg(stack, level, pos, player);
+        }
+
         if (!(stack.getItem() instanceof RepairHammerItem hammer)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
@@ -119,6 +125,34 @@ public class BaseFlagBlock extends Block implements EntityBlock {
             );
         }
         return ItemInteractionResult.SUCCESS;
+    }
+
+    /**
+     * Starts a raid targeting this flag. Only player-owned flags can be raided:
+     * an unowned flag is just a marker, and a raider-owned one is already captured.
+     */
+    private ItemInteractionResult useRaiderSpawnEgg(ItemStack stack, Level level, BlockPos pos, Player player) {
+        BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+        if (blockEntity == null) {
+            return ItemInteractionResult.CONSUME;
+        }
+
+        if (!level.isClientSide) {
+            if (blockEntity.getOwner() == null) {
+                player.displayClientMessage(
+                        Component.literal("Only a player-owned flag can be raided"), true);
+                return ItemInteractionResult.CONSUME;
+            }
+            if (RaidSpawner.startRaid((ServerLevel) level, pos)) {
+                if (!player.hasInfiniteMaterials()) {
+                    stack.shrink(1);
+                }
+            } else {
+                player.displayClientMessage(
+                        Component.literal("Could not find a safe raid spawn point"), true);
+            }
+        }
+        return ItemInteractionResult.sidedSuccess(level.isClientSide);
     }
 
     // Blocks repaired per click: stone -> 1, iron -> 3, diamond -> 6
