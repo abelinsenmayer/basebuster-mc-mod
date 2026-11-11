@@ -58,7 +58,7 @@ public class Config {
 
     public static final ModConfigSpec.DoubleValue FLAG_CAPTURE_PLAYER_PROGRESS_PER_CLICK = BUILDER
             .comment("Fraction of capture progress a player gains per right-click on a flag they don't own")
-            .defineInRange("flagCapture.playerProgressPerClick", 0.05, 0.001, 1.0);
+            .defineInRange("flagCapture.playerProgressPerClick", 0.02, 0.001, 1.0);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

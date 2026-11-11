@@ -41,6 +41,8 @@ public class BaseFlagBlockEntity extends BlockEntity {
     private static final int PROGRESS_BAR_SEGMENTS = 10;
     // Ticks between capture progress notifications to the owner
     private static final int NOTIFY_INTERVAL_TICKS = 10;
+    // Ticks without a capture click before player capture progress resets (one second)
+    private static final int PLAYER_CAPTURE_TIMEOUT_TICKS = 20;
 
     private Player owner = null;
     private String ownerName = "NONE";
@@ -77,6 +79,8 @@ public class BaseFlagBlockEntity extends BlockEntity {
     // The player currently capturing; a different player's click resets progress
     @Nullable
     private UUID playerCapturerId = null;
+    // Game time of the capturer's most recent click
+    private long lastPlayerCaptureTick = -1L;
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         super(BASE_FLAG_BLOCK_ENTITY.get(), pos, blockState);
@@ -319,6 +323,7 @@ public class BaseFlagBlockEntity extends BlockEntity {
         this.capturerTicks.clear();
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
+        this.lastPlayerCaptureTick = -1L;
         // Reclaiming a raider-captured flag restores its uncaptured appearance
         if (this.level instanceof ServerLevel serverLevel
                 && getBlockState().hasProperty(BaseFlagBlock.CAPTURED)
@@ -407,14 +412,15 @@ public class BaseFlagBlockEntity extends BlockEntity {
      *
      * <p>Only one player can hold capture progress at a time: a click from a
      * different player discards the previous capturer's progress and starts the
-     * new player's count. At 100% the flag transfers to the clicking player,
+     * new player's count. Progress also resets if more than a second passes
+     * between clicks. At 100% the flag transfers to the clicking player,
      * clearing any raider faction ownership and captured appearance.
      *
      * @return whether the click was handled as a capture attempt (false when the
      *         clicker already owns the flag)
      */
     public boolean advancePlayerCapture(Player player) {
-        if (!(this.level instanceof ServerLevel)) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
             return false;
         }
 
@@ -428,6 +434,14 @@ public class BaseFlagBlockEntity extends BlockEntity {
             this.completePlayerCapture(player);
             return true;
         }
+
+        long now = serverLevel.getGameTime();
+        if (this.lastPlayerCaptureTick >= 0 && now - this.lastPlayerCaptureTick > PLAYER_CAPTURE_TIMEOUT_TICKS) {
+            // The previous capturer stopped clicking for over a second
+            this.playerCaptureProgress = 0.0F;
+            this.playerCapturerId = null;
+        }
+        this.lastPlayerCaptureTick = now;
 
         if (this.playerCapturerId != null && !this.playerCapturerId.equals(player.getUUID())) {
             // Contested: someone else was mid-capture, so their progress resets
@@ -452,6 +466,7 @@ public class BaseFlagBlockEntity extends BlockEntity {
     private void completePlayerCapture(Player player) {
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
+        this.lastPlayerCaptureTick = -1L;
         this.setOwner(player);
         if (this.level instanceof ServerLevel serverLevel) {
             serverLevel.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
@@ -475,6 +490,7 @@ public class BaseFlagBlockEntity extends BlockEntity {
         this.capturerTicks.clear();
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
+        this.lastPlayerCaptureTick = -1L;
 
         BlockPos pos = getBlockPos();
         serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
