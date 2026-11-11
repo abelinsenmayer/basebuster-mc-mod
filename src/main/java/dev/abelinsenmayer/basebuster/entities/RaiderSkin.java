@@ -29,7 +29,7 @@ public enum RaiderSkin {
             "textures/entity/skeleton/wither_skeleton.png"),
     BOGGED(RaiderSkinTheme.UNDEAD, ModelKind.BOGGED, "textures/entity/skeleton/bogged.png",
             "textures/entity/skeleton/bogged_overlay.png"),
-    ENDERMAN(RaiderSkinTheme.ENDER, ModelKind.ENDERMAN, "textures/entity/enderman/enderman.png"),
+//    ENDERMAN(RaiderSkinTheme.ENDER, ModelKind.ENDERMAN, "textures/entity/enderman/enderman.png"),
     PIGLIN(RaiderSkinTheme.PIGLIN, ModelKind.PIGLIN, "textures/entity/piglin/piglin.png"),
     PIGLIN_BRUTE(RaiderSkinTheme.PIGLIN, ModelKind.PIGLIN, "textures/entity/piglin/piglin_brute.png"),
     ZOMBIFIED_PIGLIN(RaiderSkinTheme.PIGLIN, ModelKind.PIGLIN,
@@ -100,7 +100,7 @@ public enum RaiderSkin {
         SKELETON,
         PIGLIN,
         ZOMBIE_VILLAGER,
-        ENDERMAN,
+//        ENDERMAN,
         BOGGED
     }
 }

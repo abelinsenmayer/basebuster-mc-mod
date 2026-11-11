@@ -2,8 +2,10 @@ package dev.abelinsenmayer.basebuster.raids;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderKit;
 import dev.abelinsenmayer.basebuster.entities.RaiderSkinTheme;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
 import net.minecraft.core.BlockPos;
@@ -27,14 +29,16 @@ import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Spawns a raiding party (one {@link RaiderBossEntity} plus {@link #MEMBER_COUNT}
- * {@link RaiderEntity}s) just outside a flag's protection radius, biased toward
- * the cheapest approach a raider could take to the flag.
+ * Spawns a raiding party ({@link RaiderBossEntity} bosses plus a mix of
+ * {@link RaiderEntity} kits) just outside a flag's protection radius, biased
+ * toward the cheapest approach a raider could take to the flag. Party size and
+ * makeup scale with the flag's base level; see {@link #RAID_COMPOSITION}.
  *
  * <p>Because the spawn ring sits well beyond a single pathing search's reach,
  * this uses an approximate, single-search strategy:
@@ -64,9 +68,20 @@ public final class RaidSpawner {
     private static final int PATH_NODE_BUDGET = 8192;
     // Manhattan distance from a candidate at which the path counts as reached
     private static final int TARGET_ACCURACY = 3;
-    // Raid composition: 1 boss + this many raiders
-    private static final int MEMBER_COUNT = 6;
-    // How far from the party anchor a raider may appear
+    // Raid composition per flag base level:
+    // RAID_COMPOSITION[level - 1] = {bosses, bowmen, sword-and-board, tanks}.
+    // Levels past the table clamp to the last row.
+    private static final int[][] RAID_COMPOSITION = {
+            {1, 4, 6, 0},    // Level 1
+            {2, 6, 8, 2},    // Level 2
+            {3, 12, 14, 6},  // Level 3
+            {4, 26, 20, 8},  // Level 4
+            {5, 26, 30, 10}, // Level 5
+    };
+    // Kits assigned to the member columns of RAID_COMPOSITION, in order
+    private static final RaiderKit[] MEMBER_KITS = {RaiderKit.BOWMAN, RaiderKit.SWORD_AND_BOARD, RaiderKit.TANK};
+    // Minimum distance from the party anchor a member may appear; large
+    // parties spread wider (see startRaid)
     private static final int MEMBER_SPREAD_RADIUS = 4;
     // Attempts to find a safe spot for each raider before falling back to the anchor
     private static final int MEMBER_SPAWN_ATTEMPTS = 16;
@@ -87,6 +102,11 @@ public final class RaidSpawner {
      */
     public static boolean startRaid(ServerLevel level, BlockPos flagPos) {
         RandomSource random = level.getRandom();
+        int raidTier = raidTier(level, flagPos);
+        int[] composition = RAID_COMPOSITION[raidTier - 1];
+        int partySize = Arrays.stream(composition).sum();
+        // Large parties scatter wider so the anchor area can hold them all
+        int spreadRadius = Math.max(MEMBER_SPREAD_RADIUS, (int) Math.ceil(Math.sqrt(partySize)));
 
         // Probe with the boss: it's the largest member, so routes and spawn
         // spots that fit the boss fit everyone
@@ -105,30 +125,66 @@ public final class RaidSpawner {
             return false;
         }
 
-        // One id per raid, shared by every boss it spawns (more may join
-        // later), so a dying boss can tell when it's the last one standing
+        // One id per raid, shared by every boss it spawns, so a dying boss can
+        // tell when it's the last one standing
         UUID raidId = UUID.randomUUID();
         boss.setRaidId(raidId);
+        boss.setRaidTier(raidTier);
 
         BlockPos anchor = pickAnchor(level, flagPos, anchors, boss, distance);
         spawnMember(level, boss, anchor);
 
-        for (int i = 0; i < MEMBER_COUNT; i++) {
-            RaiderEntity raider = BaseBuster.RAIDER.get().create(level);
-            if (raider == null) {
+        List<RaiderBossEntity> bosses = new ArrayList<>();
+        bosses.add(boss);
+        // Remaining bosses spawn around the anchor like other members. Their
+        // kits stay unset so finalizeSpawn gives each a random one.
+        for (int i = 1; i < composition[0]; i++) {
+            RaiderBossEntity extra = BaseBuster.RAIDER_BOSS.get().create(level);
+            if (extra == null) {
                 continue;
             }
-            BlockPos spot = findSafeSpawnNear(level, raider, anchor, random);
-            raider.setSkin(theme.randomSkin(random));
-            spawnMember(level, raider, spot);
-            raider.setSquadLeader(boss);
+            extra.setRaidId(raidId);
+            extra.setRaidTier(raidTier);
+            extra.setSkin(theme.randomSkin(random));
+            spawnMember(level, extra, findSafeSpawnNear(level, extra, anchor, spreadRadius, random));
+            bosses.add(extra);
+        }
+
+        int memberIndex = 0;
+        for (int slot = 0; slot < MEMBER_KITS.length; slot++) {
+            for (int i = 0; i < composition[slot + 1]; i++) {
+                RaiderEntity raider = BaseBuster.RAIDER.get().create(level);
+                if (raider == null) {
+                    continue;
+                }
+                raider.setKit(MEMBER_KITS[slot]);
+                raider.setSkin(theme.randomSkin(random));
+                spawnMember(level, raider, findSafeSpawnNear(level, raider, anchor, spreadRadius, random));
+                // Split members evenly among the raid's bosses
+                raider.setSquadLeader(bosses.get(memberIndex % bosses.size()));
+                memberIndex++;
+            }
         }
 
         // One horn at the raid party, one at the besieged flag so the defender hears it too
         level.playSound(null, anchor, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
         level.playSound(null, flagPos, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
-        BaseBuster.LOGGER.info("Raid spawned at {} targeting flag at {}", anchor, flagPos);
+        BaseBuster.LOGGER.info("Raid of {} spawned at {} targeting flag at {}", partySize, anchor, flagPos);
         return true;
+    }
+
+    /**
+     * The raid tier for the flag's current base level, which indexes
+     * {@link #RAID_COMPOSITION} and decides the dropped banner's tier. Flags
+     * without a {@link BaseFlagBlockEntity} get a level-1 raid; levels beyond
+     * the table clamp to the last row.
+     */
+    private static int raidTier(ServerLevel level, BlockPos flagPos) {
+        int baseLevel = 1;
+        if (level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity) {
+            baseLevel = flagEntity.getBaseLevel();
+        }
+        return Math.clamp(baseLevel, 1, RAID_COMPOSITION.length);
     }
 
     /**
@@ -233,10 +289,10 @@ public final class RaidSpawner {
      * when nothing else pans out (the anchor is already boss-safe, and the boss
      * is bigger than any raider).
      */
-    private static BlockPos findSafeSpawnNear(ServerLevel level, Mob probe, BlockPos anchor, RandomSource random) {
+    private static BlockPos findSafeSpawnNear(ServerLevel level, Mob probe, BlockPos anchor, int spreadRadius, RandomSource random) {
         for (int i = 0; i < MEMBER_SPAWN_ATTEMPTS; i++) {
-            int dx = random.nextInt(MEMBER_SPREAD_RADIUS * 2 + 1) - MEMBER_SPREAD_RADIUS;
-            int dz = random.nextInt(MEMBER_SPREAD_RADIUS * 2 + 1) - MEMBER_SPREAD_RADIUS;
+            int dx = random.nextInt(spreadRadius * 2 + 1) - spreadRadius;
+            int dz = random.nextInt(spreadRadius * 2 + 1) - spreadRadius;
             BlockPos feet = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, anchor.offset(dx, 0, dz));
             if (isSafeSpawn(level, probe, feet)) {
                 return feet;

@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.entities;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -23,6 +24,7 @@ public class RaiderBossEntity extends RaiderEntity {
     // Base zombie height is 1.95 blocks; 1.95 * SCALE ~= 2.5
     private static final double BOSS_SCALE = 2.5 / 1.95;
     private static final String RAID_TAG = "RaidId";
+    private static final String RAID_TIER_TAG = "RaidTier";
     // A dying boss scans this far for surviving bosses from the same raid
     // before awarding the victory banner
     private static final double RAID_MATE_SEARCH_RADIUS = 128.0;
@@ -31,6 +33,8 @@ public class RaiderBossEntity extends RaiderEntity {
     // not part of a raid and never drop a banner
     @Nullable
     private UUID raidId;
+    // The banner tier the raid's last boss drops; only meaningful with a raidId
+    private int raidTier = VictoryBannerBlock.MIN_TIER;
 
     public RaiderBossEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -64,12 +68,17 @@ public class RaiderBossEntity extends RaiderEntity {
         this.raidId = raidId;
     }
 
+    /** Sets the victory banner tier this raid's last boss drops. */
+    public void setRaidTier(int raidTier) {
+        this.raidTier = raidTier;
+    }
+
     @Override
     protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit);
         if (this.isLastBossOfRaid(level)) {
-            // All raid bosses currently award a tier-1 banner
-            this.spawnAtLocation(new ItemStack(BaseBuster.VICTORY_BANNER_TIER1_ITEM.get()));
+            int index = Math.clamp(this.raidTier, VictoryBannerBlock.MIN_TIER, VictoryBannerBlock.MAX_TIER) - 1;
+            this.spawnAtLocation(new ItemStack(BaseBuster.VICTORY_BANNER_ITEMS.get(index).get()));
         }
     }
 
@@ -96,6 +105,7 @@ public class RaiderBossEntity extends RaiderEntity {
         if (this.raidId != null) {
             tag.putUUID(RAID_TAG, this.raidId);
         }
+        tag.putInt(RAID_TIER_TAG, this.raidTier);
     }
 
     @Override
@@ -103,6 +113,9 @@ public class RaiderBossEntity extends RaiderEntity {
         super.readAdditionalSaveData(tag);
         if (tag.hasUUID(RAID_TAG)) {
             this.raidId = tag.getUUID(RAID_TAG);
+        }
+        if (tag.contains(RAID_TIER_TAG)) {
+            this.raidTier = tag.getInt(RAID_TIER_TAG);
         }
     }
 }

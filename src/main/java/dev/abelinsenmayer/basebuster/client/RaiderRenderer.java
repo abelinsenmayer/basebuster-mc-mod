@@ -62,7 +62,7 @@ public class RaiderRenderer<T extends RaiderEntity> extends HumanoidMobRenderer<
             case SKELETON -> ModelLayers.SKELETON;
             case PIGLIN -> ModelLayers.PIGLIN;
             case ZOMBIE_VILLAGER -> ModelLayers.ZOMBIE_VILLAGER;
-            case ENDERMAN -> ModelLayers.ENDERMAN;
+//            case ENDERMAN -> ModelLayers.ENDERMAN;
             case BOGGED -> ModelLayers.BOGGED;
         });
         return switch (skin.model()) {
@@ -74,7 +74,7 @@ public class RaiderRenderer<T extends RaiderEntity> extends HumanoidMobRenderer<
             case SKELETON -> new SkeletonModel<>(part);
             case PIGLIN -> new PiglinModel<>(part);
             case ZOMBIE_VILLAGER -> new ZombieVillagerModel<>(part);
-            case ENDERMAN -> new EndermanModel<>(part);
+//            case ENDERMAN -> new EndermanModel<>(part);
             // BoggedModel is bound to Bogged; the BOGGED layer is
             // skeleton-family geometry so a HumanoidModel fits
             case BOGGED -> new HumanoidModel<>(part);
@@ -154,10 +154,10 @@ public class RaiderRenderer<T extends RaiderEntity> extends HumanoidMobRenderer<
         public void render(PoseStack poseStack, MultiBufferSource buffer, int packedLight, T entity,
                            float limbSwing, float limbSwingAmount, float partialTicks,
                            float ageInTicks, float netHeadYaw, float headPitch) {
-            if (entity.getSkin() == RaiderSkin.ENDERMAN && !entity.isInvisible()) {
-                VertexConsumer consumer = buffer.getBuffer(RenderType.eyes(ENDERMAN_EYES));
-                this.getParentModel().renderToBuffer(poseStack, consumer, packedLight, OverlayTexture.NO_OVERLAY, -1);
-            }
+//            if (entity.getSkin() == RaiderSkin.ENDERMAN && !entity.isInvisible()) {
+//                VertexConsumer consumer = buffer.getBuffer(RenderType.eyes(ENDERMAN_EYES));
+//                this.getParentModel().renderToBuffer(poseStack, consumer, packedLight, OverlayTexture.NO_OVERLAY, -1);
+//            }
         }
     }
 }

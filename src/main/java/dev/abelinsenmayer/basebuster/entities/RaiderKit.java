@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public enum RaiderKit {
     /** Melee frontliner: sword and shield, vanilla zombie stats. */
-    SWORD_AND_BOARD(20.0, 0.23, false) {
+    SWORD_AND_BOARD(20.0, 0.23, false, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             raider.setItemSlot(EquipmentSlot.MAINHAND,
@@ -24,22 +24,35 @@ public enum RaiderKit {
         }
     },
     /** Ranged support: bow and a leather helmet, vanilla skeleton stats. */
-    BOWMAN(16.0, 0.25, true) {
+    BOWMAN(16.0, 0.25, true, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             raider.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
             raider.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.LEATHER_HELMET));
+        }
+    },
+    /** Heavy bruiser: mace and full iron armor, extra health, hard to stagger. */
+    TANK(26.0, 0.20, false, 0.8) {
+        @Override
+        public void equip(RaiderEntity raider, RandomSource random) {
+            raider.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.MACE));
+            raider.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+            raider.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.IRON_CHESTPLATE));
+            raider.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
+            raider.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.IRON_BOOTS));
         }
     };
 
     private final double maxHealth;
     private final double movementSpeed;
     private final boolean ranged;
+    private final double knockbackResistance;
 
-    RaiderKit(double maxHealth, double movementSpeed, boolean ranged) {
+    RaiderKit(double maxHealth, double movementSpeed, boolean ranged, double knockbackResistance) {
         this.maxHealth = maxHealth;
         this.movementSpeed = movementSpeed;
         this.ranged = ranged;
+        this.knockbackResistance = knockbackResistance;
     }
 
     public double maxHealth() {
@@ -53,6 +66,11 @@ public enum RaiderKit {
     /** Whether this kit fights at range; gates which attack goal runs. */
     public boolean isRanged() {
         return this.ranged;
+    }
+
+    /** Fraction of incoming knockback this kit ignores (0 = none, 1 = immune). */
+    public double knockbackResistance() {
+        return this.knockbackResistance;
     }
 
     /** Hands the raider this kit's equipment. */

@@ -55,6 +55,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -103,6 +104,10 @@ public class BaseBuster {
     public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER5 = BLOCKS.register("victory_banner_tier5", () -> new VictoryBannerBlock(5, bannerProperties()));
     public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER5 = BLOCKS.register("victory_wall_banner_tier5", () -> new VictoryWallBannerBlock(5, bannerProperties().dropsLike(VICTORY_BANNER_TIER5.get())));
     public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER5_ITEM = ITEMS.register("victory_banner_tier5", () -> new BannerItem(VICTORY_BANNER_TIER5.get(), VICTORY_WALL_BANNER_TIER5.get(), new Item.Properties().stacksTo(16)));
+    // Banner items in tier order (index = tier - 1), for raid rewards
+    public static final List<DeferredItem<BannerItem>> VICTORY_BANNER_ITEMS = List.of(
+            VICTORY_BANNER_TIER1_ITEM, VICTORY_BANNER_TIER2_ITEM, VICTORY_BANNER_TIER3_ITEM,
+            VICTORY_BANNER_TIER4_ITEM, VICTORY_BANNER_TIER5_ITEM);
 
     // Same physical properties as a vanilla banner
     private static BlockBehaviour.Properties bannerProperties() {

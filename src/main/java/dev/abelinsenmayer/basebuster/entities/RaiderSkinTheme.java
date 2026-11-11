@@ -11,8 +11,8 @@ import java.util.List;
  */
 public enum RaiderSkinTheme {
     UNDEAD,
-    PIGLIN,
-    ENDER;
+    PIGLIN;
+//    ENDER;
 
     /** All skins belonging to this theme. */
     public List<RaiderSkin> skins() {

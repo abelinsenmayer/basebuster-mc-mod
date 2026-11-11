@@ -212,6 +212,11 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         if (moveSpeed != null) {
             moveSpeed.setBaseValue(this.getKit().movementSpeed());
         }
+        // Knockback resistance is kit-level too (e.g. tanks shrug off hits)
+        AttributeInstance knockbackResist = this.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (knockbackResist != null) {
+            knockbackResist.setBaseValue(this.getKit().knockbackResistance());
+        }
         return result;
     }
 
