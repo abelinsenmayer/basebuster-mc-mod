@@ -97,9 +97,10 @@ public class BaseFlagBlock extends Block implements EntityBlock {
 
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
-        // Testing hook: a raider spawn egg starts a raid on this flag
-        if (stack.is(BaseBuster.RAIDER_SPAWN_EGG.get())) {
-            return this.useRaiderSpawnEgg(stack, level, pos, player);
+        // Raid triggers: a raider spawn egg or any ominous bottle (all five
+        // types share one item; the amplifier lives in a data component)
+        if (stack.is(BaseBuster.RAIDER_SPAWN_EGG.get()) || stack.is(Items.OMINOUS_BOTTLE)) {
+            return this.useRaidTrigger(stack, level, pos, player);
         }
 
         if (!(stack.getItem() instanceof RepairHammerItem hammer)) {
@@ -131,7 +132,7 @@ public class BaseFlagBlock extends Block implements EntityBlock {
      * Starts a raid targeting this flag. Only player-owned flags can be raided:
      * an unowned flag is just a marker, and a raider-owned one is already captured.
      */
-    private ItemInteractionResult useRaiderSpawnEgg(ItemStack stack, Level level, BlockPos pos, Player player) {
+    private ItemInteractionResult useRaidTrigger(ItemStack stack, Level level, BlockPos pos, Player player) {
         BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
         if (blockEntity == null) {
             return ItemInteractionResult.CONSUME;
