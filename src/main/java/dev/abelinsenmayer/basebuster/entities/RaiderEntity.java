@@ -14,6 +14,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.DifficultyInstance;
@@ -47,6 +48,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ProjectileWeaponItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.loot.LootTable;
 import net.neoforged.neoforge.fluids.FluidType;
 
 import javax.annotation.Nullable;
@@ -156,6 +158,30 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     @Override
     protected boolean isSunSensitive() {
         return false;
+    }
+
+    // Death loot resolves to a per-skin table
+    // (data/basebuster/loot_table/entities/raider/<skin>.json); each one nests
+    // the shared kit table, which gates arrow/iron drops on the RaiderKit tag
+    @Override
+    protected ResourceKey<LootTable> getDefaultLootTable() {
+        return this.getSkin().lootTable();
+    }
+
+    // Mob.dropCustomDeathLoot rolls equipment-drop chances on every slot, so
+    // kit gear and picked-up items could drop. Overridden empty: raiders only
+    // drop their loot-table contents and XP. RaiderBossEntity extends this to
+    // add its victory banner, so guaranteed drops still have a hook.
+    @Override
+    protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
+    }
+
+    // Mob inflates XP by 1-3 per equipped piece; raiders always drop flat
+    // zombie XP (5) regardless of kit. Zombie's baby bonus doesn't apply
+    // either -- raiders are never babies.
+    @Override
+    protected int getBaseExperienceReward() {
+        return this.xpReward;
     }
 
     /**

@@ -1,8 +1,13 @@
 package dev.abelinsenmayer.basebuster.entities;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.storage.loot.LootTable;
 
 import javax.annotation.Nullable;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -38,6 +43,9 @@ public enum RaiderSkin {
     private final RaiderSkinTheme theme;
     private final ModelKind model;
     private final ResourceLocation texture;
+    // Death loot table: data/basebuster/loot_table/entities/raider/<skin>.json.
+    // Kit drops are shared via the nested basebuster:entities/raider/kit table.
+    private final ResourceKey<LootTable> lootTable;
     // Extra clothing/wear rendered over the base model (e.g. stray rags,
     // drowned clothes, bogged mushrooms); null for most skins
     @Nullable
@@ -52,6 +60,8 @@ public enum RaiderSkin {
         this.model = model;
         this.texture = ResourceLocation.withDefaultNamespace(texture);
         this.overlay = overlay != null ? ResourceLocation.withDefaultNamespace(overlay) : null;
+        this.lootTable = ResourceKey.create(Registries.LOOT_TABLE, ResourceLocation.fromNamespaceAndPath(
+                BaseBuster.MODID, "entities/raider/" + this.name().toLowerCase(Locale.ROOT)));
     }
 
     public RaiderSkinTheme theme() {
@@ -70,6 +80,11 @@ public enum RaiderSkin {
     @Nullable
     public ResourceLocation overlay() {
         return this.overlay;
+    }
+
+    /** The death loot table raiders wearing this skin roll on. */
+    public ResourceKey<LootTable> lootTable() {
+        return this.lootTable;
     }
 
     /** The skin at the given ordinal, or null when out of range. */

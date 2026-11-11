@@ -58,6 +58,12 @@ public class RaiderBossEntity extends RaiderEntity {
         return false;
     }
 
+    // Bosses are worth 5x a raider's XP (25)
+    @Override
+    protected int getBaseExperienceReward() {
+        return super.getBaseExperienceReward() * 5;
+    }
+
     @Nullable
     public UUID getRaidId() {
         return this.raidId;
