@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.events;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -123,6 +124,12 @@ public class BaseBusterEventBus {
 
         // A broken flag can't repair itself
         if (state.getBlock() instanceof BaseFlagBlock) {
+            return false;
+        }
+
+        // Raider scaffolding is temporary clutter, not part of the base:
+        // repairing it would just respawn blocks that remove themselves anyway
+        if (state.getBlock() instanceof RaiderScaffoldingBlock) {
             return false;
         }
 

@@ -2,6 +2,8 @@ package dev.abelinsenmayer.basebuster;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
+import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.blocks.VictoryWallBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
@@ -81,6 +83,12 @@ public class BaseBuster {
 
     public static final DeferredBlock<BaseFlagBlock> BASE_FLAG_BLOCK = BLOCKS.register("base_flag_block", () -> new BaseFlagBlock(BlockBehaviour.Properties.of()));
     public static final DeferredItem<BlockItem> BASE_FLAG_BLOCK_ITEM = ITEMS.registerSimpleBlockItem("base_flag_block", BASE_FLAG_BLOCK);
+
+    // Temporary scaffolding placed by raiders: identical to vanilla scaffolding
+    // but drops nothing and removes itself after a minute. No item form -- it
+    // is never legitimately obtainable by players.
+    public static final DeferredBlock<RaiderScaffoldingBlock> RAIDER_SCAFFOLDING = BLOCKS.register("raider_scaffolding",
+            () -> new RaiderScaffoldingBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.SCAFFOLDING).noLootTable()));
 
     // Repair hammers: durability and mining ability match pickaxes of the same tier
     public static final DeferredItem<RepairHammerItem> STONE_REPAIR_HAMMER = ITEMS.register("stone_repair_hammer", () -> new RepairHammerItem(Tiers.STONE, new Item.Properties()));
@@ -168,6 +176,11 @@ public class BaseBuster {
     public static final Supplier<BlockEntityType<BaseFlagBlockEntity>> BASE_FLAG_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
             "base_flag_block_entity",
             () -> BlockEntityType.Builder.of(BaseFlagBlockEntity::new, BASE_FLAG_BLOCK.get()).build(null)
+    );
+
+    public static final Supplier<BlockEntityType<RaiderScaffoldingBlockEntity>> RAIDER_SCAFFOLDING_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+            "raider_scaffolding_block_entity",
+            () -> BlockEntityType.Builder.of(RaiderScaffoldingBlockEntity::new, RAIDER_SCAFFOLDING.get()).build(null)
     );
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.

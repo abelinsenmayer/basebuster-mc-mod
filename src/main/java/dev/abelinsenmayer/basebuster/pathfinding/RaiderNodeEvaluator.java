@@ -51,9 +51,9 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 2.0F;
+    private static final float BRIDGE_MALUS = 3.0F;
     // One level of a scaffold pillar the mob has to build and climb
-    private static final float PILLAR_MALUS = 3.0F;
+    private static final float PILLAR_MALUS = 4.0F;
 
     // Positions already proposed as synthetic nodes during this search, so a
     // cell is never emitted twice (each repeat costs a separate node expansion)
@@ -86,10 +86,10 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     @Override
     public int getNeighbors(Node[] outputArray, Node node) {
         int count = super.getNeighbors(outputArray, node);
-        if (!Config.RAIDER_TUNNELING_ENABLED.get()) {
-            return count;
-        }
 
+        // Scaffold, climb, and door-open moves are emitted unconditionally;
+        // RAIDER_TUNNELING_ENABLED gates only the dig-through-blocks move
+        // inside emitHorizontalNeighbor -> tunnelMalus
         count = this.emitVerticalNeighbors(outputArray, count, node);
         for (Direction direction : Direction.Plane.HORIZONTAL) {
             // PathFinder allocates a fixed 32-slot neighbor array
@@ -126,7 +126,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             // Ceiling hatch (e.g. atop a ladder): opens on approach, then the
             // mob climbs through it
             count = this.emitNode(outputArray, count, x, y + 1, z, CLIMBABLE_MALUS);
-        } else if (this.isReplaceableForScaffold(x, y + 1, z) && this.isReplaceableForScaffold(x, y + 2, z)) {
+        } else if (this.isReplaceableForScaffold(x, y + 1, z)
+                && this.isReplaceableForScaffold(x, y + 2, z)) {
             count = this.emitNode(outputArray, count, x, y + 1, z, PILLAR_MALUS);
         }
         return count;
@@ -285,8 +286,10 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
      * column is not obstructed or contains an unbreakable obstruction.
      */
     private float tunnelMalus(int x, int y, int z) {
-        // Digging destroys world blocks -- disallowed when mob griefing is off
-        if (!this.mob.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+        // Tunneling is a config toggle, and digging additionally requires mob
+        // griefing since it destroys world blocks
+        if (!Config.RAIDER_TUNNELING_ENABLED.get()
+                || !this.mob.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
             return -1.0F;
         }
         float hardness = 0.0F;

@@ -1,6 +1,8 @@
 package dev.abelinsenmayer.basebuster.entities.goals;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -256,12 +258,18 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         // Pillar ascent: the next node is directly overhead in the mob's column,
         // reachable only by climbing a scaffold stack built in place
         if (next.x == mobFeet.getX() && next.z == mobFeet.getZ() && next.y > mobFeet.getY()) {
+            // The anchor scaffold goes wherever the mob's body is: the feet
+            // cell on solid ground, or the head cell when the feet cell is the
+            // partial-height block (slab, dirt path, farmland) the mob is
+            // standing inside of
             this.ensureScaffolding(level, mobFeet);
             this.ensureScaffolding(level, mobFeet.above());
             this.mob.getJumpControl().jump();
             // Scaffolding counts as climbable, so the tag check covers both a
-            // placed pillar and pre-existing ladders/vines
-            if (level.getBlockState(mobFeet).is(BlockTags.CLIMBABLE)
+            // placed pillar and pre-existing ladders/vines; the head cell is
+            // included so a pillar anchored there still propels the mob
+            if ((level.getBlockState(mobFeet).is(BlockTags.CLIMBABLE)
+                    || level.getBlockState(mobFeet.above()).is(BlockTags.CLIMBABLE))
                     && this.mob.getDeltaMovement().y < SCAFFOLD_CLIMB_SPEED) {
                 this.mob.setDeltaMovement(
                         this.mob.getDeltaMovement().x, SCAFFOLD_CLIMB_SPEED, this.mob.getDeltaMovement().z);
@@ -304,6 +312,11 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         return true;
     }
 
+    /**
+     * Places raider scaffolding at pos if the cell can hold one. Cells that
+     * are occupied, fluid-filled, or too far from support to keep a scaffold
+     * standing are left alone.
+     */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         if (state.getBlock() instanceof ScaffoldingBlock) {
@@ -312,9 +325,19 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         if ((!state.isAir() && !state.canBeReplaced()) || !state.getFluidState().isEmpty()) {
             return;
         }
-        level.setBlock(pos, Blocks.SCAFFOLDING.defaultBlockState(), 3);
+        // A scaffold with no support within vanilla's 7-block reach becomes a
+        // falling block on its first scheduled tick (and anything above it
+        // cascades down with drops). Placing one anyway buys the mob nothing --
+        // it just produces a place->break loop that traps the raider.
+        if (RaiderScaffoldingBlock.getDistance(level, pos) >= ScaffoldingBlock.STABILITY_MAX_DISTANCE) {
+            return;
+        }
+        // RaiderScaffoldingBlock is what gives raider scaffolding its rules:
+        // placeable on top of entities (setBlock runs no obstruction check),
+        // invisible to flag repair tracking, and self-despawning after a minute
+        level.setBlock(pos, BaseBuster.RAIDER_SCAFFOLDING.get().defaultBlockState(), 3);
         level.playSound(null, pos,
-                Blocks.SCAFFOLDING.asItem().getBreakingSound(),
+                SoundEvents.SCAFFOLDING_PLACE,
                 SoundSource.BLOCKS, 1.0F, 0.8F);
         if (this.mob.getRandom().nextInt(4) == 0) {
             this.mob.swing(InteractionHand.MAIN_HAND);

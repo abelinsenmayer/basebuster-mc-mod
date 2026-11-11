@@ -1,0 +1,12 @@
+{
+  "multipart": [
+    {
+      "apply": { "model": "minecraft:block/scaffolding_stable" },
+      "when": { "bottom": "false" }
+    },
+    {
+      "apply": { "model": "minecraft:block/scaffolding_unstable" },
+      "when": { "bottom": "true" }
+    }
+  ]
+}

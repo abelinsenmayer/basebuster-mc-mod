@@ -2,6 +2,8 @@ package dev.abelinsenmayer.basebuster.client;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.RenderType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -30,6 +32,12 @@ public class BaseBusterClient {
         // Some client setup code
         BaseBuster.LOGGER.info("HELLO FROM CLIENT SETUP");
         BaseBuster.LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
+
+        // Vanilla scaffolding rides the cutout layer, which is what makes the
+        // weave's holes and the open top render transparent. Our block reuses
+        // the vanilla models, so it needs the same layer or it renders solid
+        event.enqueueWork(
+                () -> ItemBlockRenderTypes.setRenderLayer(BaseBuster.RAIDER_SCAFFOLDING.get(), RenderType.cutout()));
     }
 
     @SubscribeEvent
