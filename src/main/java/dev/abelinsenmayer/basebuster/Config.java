@@ -34,7 +34,7 @@ public class Config {
 
     public static final ModConfigSpec.DoubleValue RAIDER_BOSS_BONUS_HEALTH = BUILDER
             .comment("Extra health a raider boss gets on top of its kit's max health")
-            .defineInRange("raiderBoss.bonusHealth", 100.0, 0.0, 1024.0);
+            .defineInRange("raiderBoss.bonusHealth", 20.0, 0.0, 1024.0);
 
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
