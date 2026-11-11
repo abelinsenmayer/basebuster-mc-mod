@@ -2,6 +2,8 @@ package dev.abelinsenmayer.basebuster;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
+import dev.abelinsenmayer.basebuster.blocks.VictoryWallBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
@@ -25,6 +27,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -33,6 +36,7 @@ import net.minecraft.world.item.Tiers;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -42,6 +46,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.DeferredSpawnEggItem;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.BlockEntityTypeAddBlocksEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -81,6 +86,35 @@ public class BaseBuster {
     public static final DeferredItem<RepairHammerItem> IRON_REPAIR_HAMMER = ITEMS.register("iron_repair_hammer", () -> new RepairHammerItem(Tiers.IRON, new Item.Properties()));
     public static final DeferredItem<RepairHammerItem> DIAMOND_REPAIR_HAMMER = ITEMS.register("diamond_repair_hammer", () -> new RepairHammerItem(Tiers.DIAMOND, new Item.Properties()));
 
+    // Victory banners: each tier is a standing block plus its wall-mounted
+    // counterpart, sharing a single BannerItem that places whichever applies
+    public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER1 = BLOCKS.register("victory_banner_tier1", () -> new VictoryBannerBlock(1, bannerProperties()));
+    public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER1 = BLOCKS.register("victory_wall_banner_tier1", () -> new VictoryWallBannerBlock(1, bannerProperties().dropsLike(VICTORY_BANNER_TIER1.get())));
+    public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER1_ITEM = ITEMS.register("victory_banner_tier1", () -> new BannerItem(VICTORY_BANNER_TIER1.get(), VICTORY_WALL_BANNER_TIER1.get(), new Item.Properties().stacksTo(16)));
+    public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER2 = BLOCKS.register("victory_banner_tier2", () -> new VictoryBannerBlock(2, bannerProperties()));
+    public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER2 = BLOCKS.register("victory_wall_banner_tier2", () -> new VictoryWallBannerBlock(2, bannerProperties().dropsLike(VICTORY_BANNER_TIER2.get())));
+    public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER2_ITEM = ITEMS.register("victory_banner_tier2", () -> new BannerItem(VICTORY_BANNER_TIER2.get(), VICTORY_WALL_BANNER_TIER2.get(), new Item.Properties().stacksTo(16)));
+    public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER3 = BLOCKS.register("victory_banner_tier3", () -> new VictoryBannerBlock(3, bannerProperties()));
+    public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER3 = BLOCKS.register("victory_wall_banner_tier3", () -> new VictoryWallBannerBlock(3, bannerProperties().dropsLike(VICTORY_BANNER_TIER3.get())));
+    public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER3_ITEM = ITEMS.register("victory_banner_tier3", () -> new BannerItem(VICTORY_BANNER_TIER3.get(), VICTORY_WALL_BANNER_TIER3.get(), new Item.Properties().stacksTo(16)));
+    public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER4 = BLOCKS.register("victory_banner_tier4", () -> new VictoryBannerBlock(4, bannerProperties()));
+    public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER4 = BLOCKS.register("victory_wall_banner_tier4", () -> new VictoryWallBannerBlock(4, bannerProperties().dropsLike(VICTORY_BANNER_TIER4.get())));
+    public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER4_ITEM = ITEMS.register("victory_banner_tier4", () -> new BannerItem(VICTORY_BANNER_TIER4.get(), VICTORY_WALL_BANNER_TIER4.get(), new Item.Properties().stacksTo(16)));
+    public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER5 = BLOCKS.register("victory_banner_tier5", () -> new VictoryBannerBlock(5, bannerProperties()));
+    public static final DeferredBlock<VictoryWallBannerBlock> VICTORY_WALL_BANNER_TIER5 = BLOCKS.register("victory_wall_banner_tier5", () -> new VictoryWallBannerBlock(5, bannerProperties().dropsLike(VICTORY_BANNER_TIER5.get())));
+    public static final DeferredItem<BannerItem> VICTORY_BANNER_TIER5_ITEM = ITEMS.register("victory_banner_tier5", () -> new BannerItem(VICTORY_BANNER_TIER5.get(), VICTORY_WALL_BANNER_TIER5.get(), new Item.Properties().stacksTo(16)));
+
+    // Same physical properties as a vanilla banner
+    private static BlockBehaviour.Properties bannerProperties() {
+        return BlockBehaviour.Properties.of()
+                .mapColor(MapColor.WOOD)
+                .forceSolidOn()
+                .instrument(NoteBlockInstrument.BASS)
+                .noCollission()
+                .strength(1.0F)
+                .ignitedByLava();
+    }
+
     // The raider entity: behaves like a zombie but does not burn in sunlight.
     // Renders as one of its RaiderSkins (themed per raid, random for egg/summon spawns)
     public static final Supplier<EntityType<RaiderEntity>> RAIDER = ENTITY_TYPES.register("raider",
@@ -119,6 +153,11 @@ public class BaseBuster {
                 output.accept(DIAMOND_REPAIR_HAMMER.get());
                 output.accept(RAIDER_SPAWN_EGG.get());
                 output.accept(RAIDER_BOSS_SPAWN_EGG.get());
+                output.accept(VICTORY_BANNER_TIER1_ITEM.get());
+                output.accept(VICTORY_BANNER_TIER2_ITEM.get());
+                output.accept(VICTORY_BANNER_TIER3_ITEM.get());
+                output.accept(VICTORY_BANNER_TIER4_ITEM.get());
+                output.accept(VICTORY_BANNER_TIER5_ITEM.get());
             }).build());
 
     public static final Supplier<BlockEntityType<BaseFlagBlockEntity>> BASE_FLAG_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
@@ -152,6 +191,7 @@ public class BaseBuster {
         modEventBus.addListener(this::addCreative);
         modEventBus.addListener(this::onGatherData);
         modEventBus.addListener(this::onRegisterEntityAttributes);
+        modEventBus.addListener(this::onAddBannerBlocks);
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
@@ -177,6 +217,17 @@ public class BaseBuster {
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(EXAMPLE_BLOCK_ITEM);
         }
+    }
+
+    // Victory banners reuse the vanilla banner block entity; make its type
+    // accept our blocks so they actually get one when placed
+    private void onAddBannerBlocks(BlockEntityTypeAddBlocksEvent event) {
+        event.modify(BlockEntityType.BANNER,
+                VICTORY_BANNER_TIER1.get(), VICTORY_WALL_BANNER_TIER1.get(),
+                VICTORY_BANNER_TIER2.get(), VICTORY_WALL_BANNER_TIER2.get(),
+                VICTORY_BANNER_TIER3.get(), VICTORY_WALL_BANNER_TIER3.get(),
+                VICTORY_BANNER_TIER4.get(), VICTORY_WALL_BANNER_TIER4.get(),
+                VICTORY_BANNER_TIER5.get(), VICTORY_WALL_BANNER_TIER5.get());
     }
 
     // Give raiders the same attributes as a zombie; configured max health is applied at spawn time

@@ -29,6 +29,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Spawns a raiding party (one {@link RaiderBossEntity} plus {@link #MEMBER_COUNT}
@@ -103,6 +104,11 @@ public final class RaidSpawner {
         if (anchors.isEmpty()) {
             return false;
         }
+
+        // One id per raid, shared by every boss it spawns (more may join
+        // later), so a dying boss can tell when it's the last one standing
+        UUID raidId = UUID.randomUUID();
+        boss.setRaidId(raidId);
 
         BlockPos anchor = pickAnchor(level, flagPos, anchors, boss, distance);
         spawnMember(level, boss, anchor);

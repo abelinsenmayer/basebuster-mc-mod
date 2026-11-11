@@ -1,5 +1,10 @@
 {
   "block.basebuster.base_flag_block": "Base Flag",
+  "block.basebuster.victory_banner_tier1": "Victory Banner (Tier 1)",
+  "block.basebuster.victory_banner_tier2": "Victory Banner (Tier 2)",
+  "block.basebuster.victory_banner_tier3": "Victory Banner (Tier 3)",
+  "block.basebuster.victory_banner_tier4": "Victory Banner (Tier 4)",
+  "block.basebuster.victory_banner_tier5": "Victory Banner (Tier 5)",
   "entity.basebuster.raider": "Raider",
   "entity.basebuster.raider_boss": "Raider Boss",
   "item.basebuster.diamond_repair_hammer": "Diamond Repair Hammer",
