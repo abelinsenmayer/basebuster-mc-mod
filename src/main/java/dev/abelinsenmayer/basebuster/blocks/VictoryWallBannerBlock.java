@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -22,6 +23,22 @@ public class VictoryWallBannerBlock extends WallBannerBlock {
 
     public int getTier() {
         return this.tier;
+    }
+
+    @Override
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving) {
+        super.onPlace(state, level, pos, oldState, isMoving);
+        if (!oldState.is(state.getBlock())) {
+            VictoryBannerBlock.updateNearbyFlagLevels(level, pos);
+        }
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        super.onRemove(state, level, pos, newState, movedByPiston);
+        if (!state.is(newState.getBlock())) {
+            VictoryBannerBlock.updateNearbyFlagLevels(level, pos);
+        }
     }
 
     @Override

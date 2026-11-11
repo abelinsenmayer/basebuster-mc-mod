@@ -50,6 +50,21 @@ public class BaseFlagBlockEntity extends BlockEntity {
     private String ownerFaction = null;
     private List<RepairTarget> repairTargets = new ArrayList<>();
 
+    // Cumulative victory-banner counts needed to hold each level:
+    // LEVEL_REQUIREMENTS[level - 1][tier - 1]. A level is attained only when
+    // every row entry is met, so each tier builds on all those below it.
+    private static final int[][] LEVEL_REQUIREMENTS = {
+            {},              // Level 1: default, no banners required
+            {2, 0, 0, 0, 0}, // Level 2: 2x tier 1 banners
+            {2, 2, 0, 0, 0}, // Level 3: +2x tier 2 banners
+            {2, 2, 4, 0, 0}, // Level 4: +4x tier 3 banners
+            {2, 2, 4, 4, 0}, // Level 5: +4x tier 4 banners
+    };
+    public static final int MAX_BASE_LEVEL = LEVEL_REQUIREMENTS.length;
+
+    // Base level derived from victory banners within FLAG_PROTECTION_RADIUS
+    private int baseLevel = 1;
+
     // Progress toward a raider capture, in [0, 1)
     private float captureProgress = 0.0F;
     // Game time of the last capture tick; progress resets after a one-tick gap
@@ -69,7 +84,72 @@ public class BaseFlagBlockEntity extends BlockEntity {
 
     public Component getInfoForDisplay() {
         String ownerDisplay = ownerFaction != null ? ownerFaction + " (faction)" : ownerName;
-        return Component.literal("Owner: " + ownerDisplay + "\nRepairs needed: " + repairTargets.size());
+        return Component.literal("Owner: " + ownerDisplay + "\nLevel: " + baseLevel + "\nRepairs needed: " + repairTargets.size());
+    }
+
+    public int getBaseLevel() {
+        return baseLevel;
+    }
+
+    /**
+     * Recomputes this flag's base level by counting victory banners (standing and
+     * wall-mounted) inside {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS}. Called by
+     * the banners' place/remove hooks whenever one appears or disappears in range,
+     * and when the flag itself is placed.
+     */
+    public void recalculateLevel() {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        BlockPos flagPos = getBlockPos();
+        int radius = BaseFlagBlock.FLAG_PROTECTION_RADIUS;
+        double radiusSqr = Math.pow(radius, 2);
+        int[] counts = new int[VictoryBannerBlock.MAX_TIER];
+        for (BlockPos pos : BlockPos.betweenClosed(
+                flagPos.offset(-radius, -radius, -radius),
+                flagPos.offset(radius, radius, radius))) {
+            // Same spherical boundary as grief protection
+            if (pos.distSqr(flagPos) > radiusSqr) {
+                continue;
+            }
+            int tier = VictoryBannerBlock.victoryBannerTier(serverLevel.getBlockState(pos));
+            if (tier > 0) {
+                counts[tier - 1]++;
+            }
+        }
+
+        int newLevel = 1;
+        for (int level = 2; level <= MAX_BASE_LEVEL; level++) {
+            int[] requirements = LEVEL_REQUIREMENTS[level - 1];
+            boolean met = true;
+            for (int tier = 0; tier < requirements.length; tier++) {
+                if (counts[tier] < requirements[tier]) {
+                    met = false;
+                    break;
+                }
+            }
+            if (!met) {
+                break;
+            }
+            newLevel = level;
+        }
+
+        if (newLevel != this.baseLevel) {
+            boolean leveledUp = newLevel > this.baseLevel;
+            this.baseLevel = newLevel;
+            Player ownerPlayer = this.getOwner();
+            if (ownerPlayer != null) {
+                ownerPlayer.displayClientMessage(
+                        Component.literal(leveledUp
+                                        ? "Your base flag has leveled up to level " + newLevel + "!"
+                                        : "Your base flag has dropped to level " + newLevel + ".")
+                                .withStyle(leveledUp ? ChatFormatting.GREEN : ChatFormatting.RED),
+                        true);
+            }
+            setChanged();
+            serverLevel.sendBlockUpdated(flagPos, getBlockState(), getBlockState(), 3);
+        }
     }
 
     public void addRepairTarget(BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {
@@ -183,6 +263,9 @@ public class BaseFlagBlockEntity extends BlockEntity {
             this.ownerFaction = tag.getString("owner_faction");
             this.owner = null;
         }
+        if (tag.contains("base_level")) {
+            this.baseLevel = tag.getInt("base_level");
+        }
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");
             int count = tag.getInt("repair_targets_count");
@@ -203,6 +286,7 @@ public class BaseFlagBlockEntity extends BlockEntity {
         } else if (owner != null) {
             tag.putString("owner_name", owner.getDisplayName().getString());
         }
+        tag.putInt("base_level", this.baseLevel);
         if (!repairTargets.isEmpty()) {
             CompoundTag repairTargetsTag = new CompoundTag();
             int i = 0;

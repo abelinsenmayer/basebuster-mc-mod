@@ -208,6 +208,16 @@ public class BaseFlagBlock extends Block implements EntityBlock {
         FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
 
         flagsSavedData.addFlagLocation(pos);
+
+        // Count victory banners already standing so a flag placed into a
+        // decorated base starts at the right level. Same-block state changes
+        // (e.g. the CAPTURED toggle) don't re-place the flag.
+        if (!oldState.is(state.getBlock())) {
+            BaseFlagBlockEntity flagEntity = getBlockEntity(level, pos);
+            if (flagEntity != null) {
+                flagEntity.recalculateLevel();
+            }
+        }
     }
 
     @Override

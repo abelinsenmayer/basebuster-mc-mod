@@ -1,11 +1,14 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.Block;
@@ -48,6 +51,57 @@ public class VictoryBannerBlock extends BannerBlock {
 
     public int getTier() {
         return this.tier;
+    }
+
+    /**
+     * The tier (1-5) if {@code state} is a victory banner of either placement
+     * form (standing or wall-mounted), or 0 otherwise. Shared with
+     * {@link VictoryWallBannerBlock} so both count toward a flag's base level.
+     */
+    public static int victoryBannerTier(BlockState state) {
+        if (state.getBlock() instanceof VictoryBannerBlock banner) {
+            return banner.getTier();
+        }
+        if (state.getBlock() instanceof VictoryWallBannerBlock banner) {
+            return banner.getTier();
+        }
+        return 0;
+    }
+
+    @Override
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving) {
+        super.onPlace(state, level, pos, oldState, isMoving);
+        if (!oldState.is(state.getBlock())) {
+            updateNearbyFlagLevels(level, pos);
+        }
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        super.onRemove(state, level, pos, newState, movedByPiston);
+        if (!state.is(newState.getBlock())) {
+            updateNearbyFlagLevels(level, pos);
+        }
+    }
+
+    /**
+     * Asks every flag within {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} of
+     * {@code pos} to recompute its base level. Called after a victory banner is
+     * placed or removed; because the world state is already updated when the
+     * hooks run, the flags' scans see the banner's final presence/absence.
+     */
+    static void updateNearbyFlagLevels(Level level, BlockPos pos) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        double radiusSqr = Math.pow(BaseFlagBlock.FLAG_PROTECTION_RADIUS, 2);
+        FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
+                .filter(flagPos -> flagPos.distSqr(pos) <= radiusSqr)
+                .forEach(flagPos -> {
+                    if (serverLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity) {
+                        flagEntity.recalculateLevel();
+                    }
+                });
     }
 
     @Override
