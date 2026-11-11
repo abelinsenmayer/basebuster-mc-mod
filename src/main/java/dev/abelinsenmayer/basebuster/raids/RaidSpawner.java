@@ -30,6 +30,7 @@ import net.minecraft.world.phys.Vec3;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -51,8 +52,13 @@ import java.util.UUID;
  *   a potential target, using {@link RaiderNodeEvaluator} so tunneling,
  *   bridging, and pillar moves are priced into the route.
  *   <li>A* reaches the cheapest reachable candidate first (or reports the
- *   best-approached candidate on a partial path), which approximates "the
- *   nearest area a raider could actually get in from."
+ *   best-approached candidate on a partial path), which becomes the first
+ *   group's spawn spot and approximates "the nearest area a raider could
+ *   actually get in from."
+ *   <li>Raids with multiple bosses get one spot per boss: the extras take
+ *   the candidates nearest evenly spaced angles around the flag, so groups
+ *   spread radially when the ring allows it. When terrain leaves too few
+ *   candidates, spots repeat rather than shrinking the raid.
  * </ol>
  *
  * <p>The search is synchronous and bounded by {@link #PATH_NODE_BUDGET}, so it
@@ -131,12 +137,14 @@ public final class RaidSpawner {
         boss.setRaidId(raidId);
         boss.setRaidTier(raidTier);
 
-        BlockPos anchor = pickAnchor(level, flagPos, anchors, boss, distance);
-        spawnMember(level, boss, anchor);
+        // One spawn spot per boss, spread radially around the flag when the
+        // candidate terrain allows it
+        List<BlockPos> spots = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+        spawnMember(level, boss, spots.get(0));
 
         List<RaiderBossEntity> bosses = new ArrayList<>();
         bosses.add(boss);
-        // Remaining bosses spawn around the anchor like other members. Their
+        // Each remaining boss leads its own group from its own spot. Their
         // kits stay unset so finalizeSpawn gives each a random one.
         for (int i = 1; i < composition[0]; i++) {
             RaiderBossEntity extra = BaseBuster.RAIDER_BOSS.get().create(level);
@@ -146,7 +154,7 @@ public final class RaidSpawner {
             extra.setRaidId(raidId);
             extra.setRaidTier(raidTier);
             extra.setSkin(theme.randomSkin(random));
-            spawnMember(level, extra, findSafeSpawnNear(level, extra, anchor, spreadRadius, random));
+            spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i), spreadRadius, random));
             bosses.add(extra);
         }
 
@@ -159,17 +167,21 @@ public final class RaidSpawner {
                 }
                 raider.setKit(MEMBER_KITS[slot]);
                 raider.setSkin(theme.randomSkin(random));
-                spawnMember(level, raider, findSafeSpawnNear(level, raider, anchor, spreadRadius, random));
-                // Split members evenly among the raid's bosses
-                raider.setSquadLeader(bosses.get(memberIndex % bosses.size()));
+                // Split members evenly across the group spots, then join
+                // whichever boss actually ended up closest to where they spawned
+                BlockPos spawn = findSafeSpawnNear(level, raider, spots.get(memberIndex % spots.size()), spreadRadius, random);
+                spawnMember(level, raider, spawn);
+                raider.setSquadLeader(nearestBoss(bosses, spawn));
                 memberIndex++;
             }
         }
 
-        // One horn at the raid party, one at the besieged flag so the defender hears it too
-        level.playSound(null, anchor, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+        // One horn per group, plus one at the besieged flag so the defender hears it too
+        for (BlockPos spot : spots.stream().distinct().toList()) {
+            level.playSound(null, spot, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+        }
         level.playSound(null, flagPos, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
-        BaseBuster.LOGGER.info("Raid of {} spawned at {} targeting flag at {}", partySize, anchor, flagPos);
+        BaseBuster.LOGGER.info("Raid of {} in {} group(s) spawned at {} targeting flag at {}", partySize, spots.size(), spots, flagPos);
         return true;
     }
 
@@ -252,6 +264,79 @@ public final class RaidSpawner {
             return path.getTarget();
         }
         return anchors.get(level.getRandom().nextInt(anchors.size()));
+    }
+
+    /**
+     * The {@code count} spawn spots for the raid's groups — one per boss. The
+     * first is {@link #pickAnchor}'s cheapest reachable candidate; the rest
+     * take the candidates nearest evenly spaced angles around the flag, so
+     * groups spread radially. Each candidate hosts at most one group until
+     * they run out; after that, spots repeat (guaranteeing {@code count}
+     * spots) so a cramped ring still yields a full raid.
+     */
+    private static List<BlockPos> pickAnchors(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance, int count) {
+        List<BlockPos> spots = new ArrayList<>();
+        BlockPos primary = pickAnchor(level, flagPos, anchors, probe, distance);
+        spots.add(primary);
+
+        Set<BlockPos> used = new HashSet<>();
+        used.add(primary);
+        double startAngle = Math.atan2(primary.getZ() - flagPos.getZ(), primary.getX() - flagPos.getX());
+        for (int i = 1; i < count; i++) {
+            double desiredAngle = startAngle + i * (Math.PI * 2 / count);
+            BlockPos nearest = nearestAnchorAtAngle(flagPos, anchors, used, desiredAngle);
+            if (nearest == null) {
+                // Every candidate already hosts a group; reuse the closest one
+                nearest = nearestAnchorAtAngle(flagPos, anchors, Set.of(), desiredAngle);
+            }
+            spots.add(nearest);
+            used.add(nearest);
+        }
+        return spots;
+    }
+
+    /**
+     * The candidate in {@code anchors} but not in {@code excluded} whose angle
+     * around the flag is closest to {@code angle}; null when every candidate
+     * is excluded.
+     */
+    @Nullable
+    private static BlockPos nearestAnchorAtAngle(BlockPos flagPos, List<BlockPos> anchors, Set<BlockPos> excluded, double angle) {
+        BlockPos nearest = null;
+        double bestDiff = Double.MAX_VALUE;
+        for (BlockPos anchor : anchors) {
+            if (excluded.contains(anchor)) {
+                continue;
+            }
+            double anchorAngle = Math.atan2(anchor.getZ() - flagPos.getZ(), anchor.getX() - flagPos.getX());
+            double diff = Math.abs(anchorAngle - angle) % (Math.PI * 2);
+            if (diff > Math.PI) {
+                diff = Math.PI * 2 - diff;
+            }
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                nearest = anchor;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * The boss closest to {@code pos}. Raiders join the group whose leader
+     * they spawned nearest, which keeps squads local even when spots end up
+     * clustered by the terrain.
+     */
+    private static RaiderBossEntity nearestBoss(List<RaiderBossEntity> bosses, BlockPos pos) {
+        RaiderBossEntity nearest = bosses.get(0);
+        double bestDist = nearest.blockPosition().distSqr(pos);
+        for (int i = 1; i < bosses.size(); i++) {
+            double dist = bosses.get(i).blockPosition().distSqr(pos);
+            if (dist < bestDist) {
+                bestDist = dist;
+                nearest = bosses.get(i);
+            }
+        }
+        return nearest;
     }
 
     /**
