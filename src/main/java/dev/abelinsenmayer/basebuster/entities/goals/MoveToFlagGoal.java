@@ -265,12 +265,27 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         }
         Path path = this.mob.getNavigation().getPath();
         if (path == null || path.isDone()) {
+            this.mob.setShiftKeyDown(false);
             return;
         }
 
         int nextIndex = path.getNextNodeIndex();
         Node next = path.getNode(nextIndex);
         BlockPos mobFeet = this.mob.blockPosition();
+
+        // Descent: the next node sits inside the scaffold/climbable column
+        // directly underfoot. Scaffolding's collision shape only yields while
+        // the entity is "descending" (sneak held), which mobs never do on their
+        // own -- without this they strafe over a node below their feet forever.
+        // Sneaking drops the mob through the top plate; climbable drag then
+        // lowers it down the column at vanilla's -0.15 blocks/tick with fall
+        // distance reset, and the bottom cell's plate (which still collides
+        // while descending) catches it at the base.
+        boolean descending = next.y < mobFeet.getY();
+        this.mob.setShiftKeyDown(descending);
+        if (descending) {
+            return;
+        }
 
         // Pillar ascent: the next node is directly overhead in the mob's column,
         // reachable only by climbing a scaffold stack built in place
@@ -532,6 +547,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         if (this.mob.level() instanceof ServerLevel serverLevel) {
             this.resetBreaking(serverLevel);
         }
+        // A mid-descent interruption must not leave the sneak flag stuck on
+        this.mob.setShiftKeyDown(false);
         super.stop();
         // If the goal ended and the flag's chunk is loaded but the flag is gone,
         // the saved data is stale: prune it so raiders stop chasing ghosts
