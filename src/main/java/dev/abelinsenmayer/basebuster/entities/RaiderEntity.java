@@ -74,6 +74,11 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // Approximate speed an arrow loses per block traveled (arrows keep ~99% of
     // their speed per tick)
     private static final float BOW_DRAG_PER_BLOCK = 0.01F;
+    // In-water speed retention for raiders that swim (0-1 like Depth Strider's
+    // attribute scale): near-full land speed so moats, rivers, and waterfall
+    // bases don't stall an assault. Sinking raiders keep vanilla underwater
+    // footing since they walk the bottom rather than swim.
+    private static final double SWIM_MOVEMENT_EFFICIENCY = 0.85;
 
     @Nullable
     private RaiderBossEntity squadLeader;
@@ -251,6 +256,12 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         AttributeInstance knockbackResist = this.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
         if (knockbackResist != null) {
             knockbackResist.setBaseValue(this.getKit().knockbackResistance());
+        }
+        // Swimmers keep most of their land speed in water; sinkers walk the
+        // bottom at vanilla underwater speed
+        AttributeInstance waterEfficiency = this.getAttribute(Attributes.WATER_MOVEMENT_EFFICIENCY);
+        if (waterEfficiency != null && !this.sinksInWater()) {
+            waterEfficiency.setBaseValue(SWIM_MOVEMENT_EFFICIENCY);
         }
         return result;
     }

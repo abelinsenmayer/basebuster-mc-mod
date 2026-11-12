@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public enum RaiderKit {
     /** Melee frontliner: sword and shield, vanilla zombie stats. */
-    SWORD_AND_BOARD(18.0, 0.23, false, 0.0) {
+    SWORD_AND_BOARD(18.0, 0.35, false, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             raider.setItemSlot(EquipmentSlot.MAINHAND,
@@ -24,7 +24,7 @@ public enum RaiderKit {
         }
     },
     /** Ranged support: bow and a leather helmet, vanilla skeleton stats. */
-    BOWMAN(14.0, 0.25, true, 0.0) {
+    BOWMAN(14.0, 0.32, true, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             raider.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));

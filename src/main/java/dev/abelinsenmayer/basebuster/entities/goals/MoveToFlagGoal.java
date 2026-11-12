@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PathfinderMob;
@@ -26,6 +27,8 @@ import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
 
@@ -287,10 +290,13 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             }
             BlockPos below = pos.below();
             BlockState belowState = level.getBlockState(below);
+            FluidState belowFluid = belowState.getFluidState();
+            // A water cell can hold the scaffold waterlogged, so a walkway node
+            // over water (e.g. the lip of a waterfall) is bridgeable too
             if (this.isTraversable(level, pos)
                     && !(belowState.getBlock() instanceof ScaffoldingBlock)
-                    && (belowState.isAir() || belowState.canBeReplaced())
-                    && belowState.getFluidState().isEmpty()) {
+                    && (belowFluid.is(FluidTags.WATER)
+                        || (belowFluid.isEmpty() && (belowState.isAir() || belowState.canBeReplaced())))) {
                 this.ensureScaffolding(level, below);
             }
         }
@@ -313,16 +319,22 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     }
 
     /**
-     * Places raider scaffolding at pos if the cell can hold one. Cells that
-     * are occupied, fluid-filled, or too far from support to keep a scaffold
-     * standing are left alone.
+     * Places raider scaffolding at pos if the cell can hold one: empty space,
+     * a replaceable block, or a water cell (scaffold goes in waterlogged so
+     * the water keeps flowing). Occupied cells, lava, and cells too far from
+     * support to keep a scaffold standing are left alone.
      */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         if (state.getBlock() instanceof ScaffoldingBlock) {
             return;
         }
-        if ((!state.isAir() && !state.canBeReplaced()) || !state.getFluidState().isEmpty()) {
+        FluidState fluid = state.getFluidState();
+        // Water accepts a waterlogged scaffold; lava and other fluids reject it
+        if (!fluid.isEmpty() && !fluid.is(FluidTags.WATER)) {
+            return;
+        }
+        if (fluid.isEmpty() && !state.isAir() && !state.canBeReplaced()) {
             return;
         }
         // A scaffold with no support within vanilla's 7-block reach becomes a
@@ -335,7 +347,13 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         // RaiderScaffoldingBlock is what gives raider scaffolding its rules:
         // placeable on top of entities (setBlock runs no obstruction check),
         // invisible to flag repair tracking, and self-despawning after a minute
-        level.setBlock(pos, BaseBuster.RAIDER_SCAFFOLDING.get().defaultBlockState(), 3);
+        BlockState scaffold = BaseBuster.RAIDER_SCAFFOLDING.get().defaultBlockState();
+        if (!fluid.isEmpty()) {
+            // Keep the water in the cell so a waterfall pours through the
+            // scaffold column instead of ending at the placement
+            scaffold = scaffold.setValue(BlockStateProperties.WATERLOGGED, true);
+        }
+        level.setBlock(pos, scaffold, 3);
         level.playSound(null, pos,
                 SoundEvents.SCAFFOLDING_PLACE,
                 SoundSource.BLOCKS, 1.0F, 0.8F);
