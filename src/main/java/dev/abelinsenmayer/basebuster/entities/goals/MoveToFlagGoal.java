@@ -15,6 +15,7 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.MoveToBlockGoal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,6 +35,7 @@ import net.minecraft.world.level.pathfinder.Path;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -56,6 +58,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     private static final int TUNNEL_LOOKAHEAD_NODES = 4;
     // Max manhattan distance from the mob at which it will start breaking a node
     private static final int TUNNEL_BREAK_REACH = 2;
+    // Max manhattan distance from the mob at which it will start placing scaffolding
+    private static final int SCAFFOLD_PLACE_REACH = 4;
     // Ticks spent breaking through a node before block hardness is factored in
     private static final int TUNNEL_BREAK_BASE_TICKS = 60;
     // Additional break ticks per point of hardness in the obstructing column
@@ -72,6 +76,12 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     public MoveToFlagGoal(PathfinderMob mob, double speedModifier) {
         // searchRange is unused: findNearestBlock() consults FlagsSavedData instead of scanning blocks
         super(mob, speedModifier, 1);
+        // MoveToBlockGoal claims MOVE|JUMP, which lets priority-1 FloatGoal
+        // stop the march every time the raider dips under water (and the
+        // 200-400-tick canUse cooldown then strands it in the wander goals).
+        // Marching needs no control over jumping, so release the flag: floating
+        // now runs alongside the goal while the nav path stays live.
+        this.setFlags(EnumSet.of(Goal.Flag.MOVE));
     }
 
     @Override
@@ -285,7 +295,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         for (int i = nextIndex; i < end; i++) {
             Node node = path.getNode(i);
             BlockPos pos = new BlockPos(node.x, node.y, node.z);
-            if (pos.distManhattan(mobFeet) > TUNNEL_BREAK_REACH) {
+            if (pos.distManhattan(mobFeet) > SCAFFOLD_PLACE_REACH) {
                 continue;
             }
             BlockPos below = pos.below();

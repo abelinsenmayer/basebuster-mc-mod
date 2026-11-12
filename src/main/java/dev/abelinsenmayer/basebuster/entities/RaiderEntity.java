@@ -84,7 +84,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // attribute scale): near-full land speed so moats, rivers, and waterfall
     // bases don't stall an assault. Sinking raiders keep vanilla underwater
     // footing since they walk the bottom rather than swim.
-    private static final double SWIM_MOVEMENT_EFFICIENCY = 0.85;
+    private static final double SWIM_MOVEMENT_EFFICIENCY = 0.7;
 
     @Nullable
     private RaiderBossEntity squadLeader;
@@ -260,8 +260,9 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
      * everyone else stays afloat.
      */
     public boolean sinksInWater() {
-        RaiderSkin skin = this.getSkin();
-        return skin.theme() == RaiderSkinTheme.UNDEAD || skin == RaiderSkin.ZOMBIFIED_PIGLIN;
+//        RaiderSkin skin = this.getSkin();
+//        return skin.theme() == RaiderSkinTheme.UNDEAD || skin == RaiderSkin.ZOMBIFIED_PIGLIN;
+        return false;
     }
 
     // Sinking raiders don't need air, like vanilla undead; swimming raiders
