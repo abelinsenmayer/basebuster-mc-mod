@@ -48,6 +48,10 @@ public class Config {
             .comment("Movement speed multiplier applied to a raider while it is fleeing")
             .defineInRange("raiderFlee.speedMultiplier", 1.3, 1.0, 10.0);
 
+    public static final ModConfigSpec.BooleanValue RAIDER_GOAL_SWITCH_LOGGING = BUILDER
+            .comment("Whether to log every goal a raider starts or stops, so its decision-making is visible")
+            .define("raiderDebug.logGoalSwitching", false);
+
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
             .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);

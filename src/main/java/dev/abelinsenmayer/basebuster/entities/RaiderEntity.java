@@ -1,5 +1,6 @@
 package dev.abelinsenmayer.basebuster.entities;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.goals.CaptureFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.FleeGoal;
@@ -27,11 +28,14 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.GoalSelector;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveThroughVillageGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -54,6 +58,8 @@ import net.neoforged.neoforge.fluids.FluidType;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class RaiderEntity extends Zombie implements RangedAttackMob {
     // -1 = no explicit skin; getSkin() falls back to a UUID-derived one so
@@ -86,6 +92,9 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // UUID-derived kit so goal checks never see null
     @Nullable
     private RaiderKit kit;
+    // Last tick's running goals; diffed each server AI tick to log transitions
+    private List<Goal> runningGoals = List.of();
+    private List<Goal> runningTargetGoals = List.of();
 
     public RaiderEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -167,6 +176,52 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, AbstractVillager.class, false));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, IronGolem.class, true));
+    }
+
+    // GoalSelector exposes no per-goal callbacks, so sample the running set
+    // after each AI tick and log the diff -- that diff is what "switching
+    // goals" means for a raider. Runs server-side only, where the AI lives.
+    @Override
+    public void tick() {
+        super.tick();
+        if (Config.RAIDER_GOAL_SWITCH_LOGGING.getAsBoolean() && !this.level().isClientSide) {
+            this.logGoalTransitions();
+        }
+    }
+
+    private void logGoalTransitions() {
+        List<Goal> goals = runningGoalsOf(this.goalSelector);
+        List<Goal> targetGoals = runningGoalsOf(this.targetSelector);
+        // Goal has no value equality, so List.equals compares by identity --
+        // which is exactly what a start/stop transition means here
+        if (!goals.equals(this.runningGoals)) {
+            BaseBuster.LOGGER.info("Raider {} goals: {} -> {}",
+                    this.getId(), describeGoals(this.runningGoals), describeGoals(goals));
+            this.runningGoals = goals;
+        }
+        if (!targetGoals.equals(this.runningTargetGoals)) {
+            BaseBuster.LOGGER.info("Raider {} target goals: {} -> {}",
+                    this.getId(), describeGoals(this.runningTargetGoals), describeGoals(targetGoals));
+            this.runningTargetGoals = targetGoals;
+        }
+    }
+
+    private static List<Goal> runningGoalsOf(GoalSelector selector) {
+        return selector.getAvailableGoals().stream()
+                .filter(WrappedGoal::isRunning)
+                .map(WrappedGoal::getGoal)
+                .toList();
+    }
+
+    private static String describeGoals(List<Goal> goals) {
+        return goals.stream().map(RaiderEntity::goalName).collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static String goalName(Goal goal) {
+        Class<?> cls = goal.getClass();
+        // Anonymous overrides registered in registerGoals (e.g. the kit-gated
+        // FloatGoal) have no simple name; report the vanilla superclass instead
+        return cls.isAnonymousClass() ? cls.getSuperclass().getSimpleName() : cls.getSimpleName();
     }
 
     @Override
