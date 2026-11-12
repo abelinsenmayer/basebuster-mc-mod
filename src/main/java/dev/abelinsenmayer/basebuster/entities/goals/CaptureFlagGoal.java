@@ -8,7 +8,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
@@ -53,6 +56,9 @@ public class CaptureFlagGoal extends Goal {
                 > CAPTURE_RADIUS * CAPTURE_RADIUS) {
             return false;
         }
+        if (!this.hasLineOfEffect(flag)) {
+            return false;
+        }
         this.flagPos = flag;
         return true;
     }
@@ -68,9 +74,12 @@ public class CaptureFlagGoal extends Goal {
         if (FlagsSavedData.getFromLevel(serverLevel).getCapturedFlagLocations().contains(this.flagPos)) {
             return false;
         }
-        return this.mob.distanceToSqr(
+        if (this.mob.distanceToSqr(
                 this.flagPos.getX() + 0.5, this.flagPos.getY() + 0.5, this.flagPos.getZ() + 0.5)
-                <= EXIT_RADIUS * EXIT_RADIUS;
+                > EXIT_RADIUS * EXIT_RADIUS) {
+            return false;
+        }
+        return this.hasLineOfEffect(this.flagPos);
     }
 
     @Override
@@ -111,6 +120,21 @@ public class CaptureFlagGoal extends Goal {
     @Override
     public void stop() {
         this.flagPos = null;
+    }
+
+    /**
+     * True when no solid block sits between the mob's eyes and the flag's
+     * center. {@link BaseFlagBlock} is non-colliding, so the ray passes through
+     * the flag itself and a MISS means the approach is unobstructed -- same
+     * shape test vanilla {@link net.minecraft.world.entity.LivingEntity#hasLineOfSight}
+     * performs against entities.
+     */
+    private boolean hasLineOfEffect(BlockPos flagPos) {
+        Vec3 from = this.mob.getEyePosition();
+        Vec3 to = new Vec3(flagPos.getX() + 0.5, flagPos.getY() + 0.5, flagPos.getZ() + 0.5);
+        return this.mob.level()
+                .clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob))
+                .getType() == HitResult.Type.MISS;
     }
 
     /**
