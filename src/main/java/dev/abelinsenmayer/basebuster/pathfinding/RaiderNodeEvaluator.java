@@ -5,6 +5,7 @@ import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.PathNavigationRegion;
@@ -51,9 +52,9 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 3.0F;
+    private static final float BRIDGE_MALUS = 12.0F;
     // One level of a scaffold pillar the mob has to build and climb
-    private static final float PILLAR_MALUS = 4.0F;
+    private static final float PILLAR_MALUS = 12.0F;
 
     // Positions already proposed as synthetic nodes during this search, so a
     // cell is never emitted twice (each repeat costs a separate node expansion)
@@ -214,9 +215,18 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
      * overwritten without a cost check, which can close a cycle in the cameFrom
      * chain and hang reconstructPath forever. Closed positions get a fresh
      * {@link Node} instance instead, whose cameFrom is set at most once.
+     *
+     * <p>Columns containing lava are rejected outright: liquids have no
+     * collision shape, so the collision-based checks that gate tunneling and
+     * bridging read lava cells as open, and vanilla's own LAVA = -1 rejection
+     * never applies to cells it failed to classify. Lava-adjacent cells keep
+     * their synthetic type but pay at least the mob's DANGER_FIRE malus,
+     * mirroring {@code checkNeighbourBlocks}.
      */
     private int emitNode(Node[] outputArray, int count, int x, int y, int z, float malus) {
-        if (count >= outputArray.length || !this.extraEmissions.add(BlockPos.asLong(x, y, z))) {
+        if (count >= outputArray.length
+                || this.columnContainsLava(x, y, z)
+                || !this.extraEmissions.add(BlockPos.asLong(x, y, z))) {
             return count;
         }
 
@@ -229,9 +239,52 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             node = new Node(x, y, z);
         }
         node.type = PathType.WALKABLE;
-        node.costMalus = malus;
+        node.costMalus = Math.max(malus, this.lavaProximityMalus(x, y, z));
         outputArray[count++] = node;
         return count;
+    }
+
+    /**
+     * Whether any cell of the mob-height column at (x, y, z) holds lava, source
+     * or flowing. Occupying such a column means burning, so it is never a
+     * synthetic move target. Water stays legal: wading and bottom-walking are
+     * priced by vanilla's WATER malus instead.
+     */
+    private boolean columnContainsLava(int x, int y, int z) {
+        for (int dy = 0; dy < this.entityHeight; dy++) {
+            if (this.currentContext.getBlockState(new BlockPos(x, y + dy, z)).getFluidState().is(FluidTags.LAVA)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The malus floor for a synthetic node based on lava proximity: the mob's
+     * DANGER_FIRE malus when lava touches the column horizontally (one block
+     * up or down included, like {@code checkNeighbourBlocks}), else zero.
+     * Vanilla applies DANGER_FIRE only to cells it classifies as WALKABLE; the
+     * cells synthetic moves fill in -- wall interiors, gap air -- come out
+     * BLOCKED, so a tunnel exit beside lava or a bridge over its lip would
+     * otherwise carry no danger cost at all.
+     */
+    private float lavaProximityMalus(int x, int y, int z) {
+        for (int dy = 0; dy < this.entityHeight; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) {
+                        continue;
+                    }
+                    for (int dj = -1; dj <= 1; dj++) {
+                        if (this.currentContext.getBlockState(new BlockPos(x + dx, y + dy + dj, z + dz))
+                                .getFluidState().is(FluidTags.LAVA)) {
+                            return this.mob.getPathfindingMalus(PathType.DANGER_FIRE);
+                        }
+                    }
+                }
+            }
+        }
+        return 0.0F;
     }
 
     private boolean isScaffolding(int x, int y, int z) {

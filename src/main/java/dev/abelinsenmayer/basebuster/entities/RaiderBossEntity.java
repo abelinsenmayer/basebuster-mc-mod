@@ -52,6 +52,13 @@ public class RaiderBossEntity extends RaiderEntity {
         return this.getKit().maxHealth() + Config.RAIDER_BOSS_BONUS_HEALTH.get();
     }
 
+    // Checked every frame; honors live config changes without needing a
+    // potion effect that would linger in saved NBT if the config is later disabled
+    @Override
+    public boolean isCurrentlyGlowing() {
+        return Config.RAIDER_BOSS_GLOWING.get() || super.isCurrentlyGlowing();
+    }
+
     @Override
     public boolean canJoinSquad() {
         // Bosses are leaders; they don't join squads and never flee

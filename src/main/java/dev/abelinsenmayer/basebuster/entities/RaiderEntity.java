@@ -48,6 +48,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ProjectileWeaponItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.neoforged.neoforge.fluids.FluidType;
 
@@ -83,6 +84,14 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
 
     public RaiderEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
+        // Vanilla prices DANGER_FIRE (cells adjacent to lava or burning blocks)
+        // at 8 -- identical to WATER -- so mobs hug lava lakeshores as casually
+        // as they wade. Tripling it keeps the cells legal but makes a detour
+        // almost always cheaper than skirting lava. DAMAGE_FIRE (standing on
+        // magma/in fire) rises to match; synthetic tunnel/bridge nodes pay the
+        // same floor via RaiderNodeEvaluator's lava-proximity check.
+        this.setPathfindingMalus(PathType.DANGER_FIRE, 24.0F);
+        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 32.0F);
     }
 
     @Override

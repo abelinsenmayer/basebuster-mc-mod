@@ -36,6 +36,10 @@ public class Config {
             .comment("Extra health a raider boss gets on top of its kit's max health")
             .defineInRange("raiderBoss.bonusHealth", 20.0, 0.0, 1024.0);
 
+    public static final ModConfigSpec.BooleanValue RAIDER_BOSS_GLOWING = BUILDER
+            .comment("Whether raider bosses glow perpetually, making them visible through walls")
+            .define("raiderBoss.glowing", true);
+
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
             .defineInRange("raiderSquad.searchRadius", 48.0, 1.0, 256.0);
