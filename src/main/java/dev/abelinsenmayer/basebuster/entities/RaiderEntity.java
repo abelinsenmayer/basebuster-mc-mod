@@ -7,6 +7,7 @@ import dev.abelinsenmayer.basebuster.entities.goals.FleeGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.JoinSquadGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.MoveToFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.WanderNearFlagGoal;
+import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNavigation;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
@@ -98,6 +99,9 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
 
     public RaiderEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
+        // Lets goals freeze MoveControl's horizontal steering and auto-jump
+        // while they drive the mob vertically (scaffold pillar climbs)
+        this.moveControl = new RaiderMoveControl(this);
         // Vanilla prices DANGER_FIRE (cells adjacent to lava or burning blocks)
         // at 8 -- identical to WATER -- so mobs hug lava lakeshores as casually
         // as they wade. Tripling it keeps the cells legal but makes a detour

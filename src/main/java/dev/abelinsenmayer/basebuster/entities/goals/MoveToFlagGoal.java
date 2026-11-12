@@ -5,6 +5,7 @@ import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
+import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -31,6 +32,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -284,6 +286,11 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         boolean descending = next.y < mobFeet.getY();
         this.mob.setShiftKeyDown(descending);
         if (descending) {
+            // Traversing through a scaffold shaft needs no lateral drive;
+            // suppress it when the mob is already inside the node's column
+            if (next.x == mobFeet.getX() && next.z == mobFeet.getZ()) {
+                this.suppressSteering();
+            }
             return;
         }
 
@@ -296,7 +303,13 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             // standing inside of
             this.ensureScaffolding(level, mobFeet);
             this.ensureScaffolding(level, mobFeet.above());
-            this.mob.getJumpControl().jump();
+
+            // Traversing through a scaffold shaft needs no lateral drive;
+            // suppress it when the mob is already inside the node's column
+            if (next.x == mobFeet.getX() && next.z == mobFeet.getZ()) {
+                this.suppressSteering();
+            }
+
             // Scaffolding counts as climbable, so the tag check covers both a
             // placed pillar and pre-existing ladders/vines; the head cell is
             // included so a pillar anchored there still propels the mob
@@ -329,6 +342,23 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
                 this.ensureScaffolding(level, below);
             }
         }
+    }
+
+    /**
+     * Freezes horizontal steering and decays leftover drift while the goal
+     * moves the mob vertically inside a scaffold column. PathNavigation
+     * re-issues a wanted position at the next node's center every tick; on a
+     * one-block-wide pillar the resulting full-speed oscillation (and repeated
+     * auto-jumps toward the node overhead) is what knocks the raider off.
+     */
+    private void suppressSteering() {
+        if (this.mob.getMoveControl() instanceof RaiderMoveControl moveControl) {
+            moveControl.holdPosition();
+        }
+        // With steering input gone, residual horizontal velocity is the only
+        // remaining wobble source; bleed it off geometrically each tick
+        Vec3 velocity = this.mob.getDeltaMovement();
+        this.mob.setDeltaMovement(velocity.x * 0.2, velocity.y, velocity.z * 0.2);
     }
 
     /**
