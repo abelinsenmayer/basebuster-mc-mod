@@ -57,9 +57,9 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 2.0F;
+    private static final float BRIDGE_MALUS = 6.0F;
     // One level of a scaffold pillar the mob has to build and climb
-    private static final float PILLAR_MALUS = 2.0F;
+    private static final float PILLAR_MALUS = 6.0F;
     // Digging straight down is priced below horizontal tunneling: it makes
     // progress toward a buried target on every node, and it must stay under
     // PILLAR_MALUS for ordinary materials so the pathfinder keeps digging a

@@ -6,7 +6,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
@@ -21,10 +20,13 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Scaffolding variant placed by raiders while bridging and pillaring. Behaves
- * like vanilla scaffolding (same shapes, stability, falling) but with three
+ * like vanilla scaffolding (same shapes and climbability) but with these
  * raider-specific rules:
  *
  * <ul>
+ *   <li><b>No stability limit</b>: never collapses or falls no matter how far
+ *   it extends horizontally from the nearest supported block, so raider
+ *   bridges of any length stay up.
  *   <li><b>No drops and no repairs</b>: registered with {@code noLootTable()},
  *   and {@code BaseBusterEventBus.handleBlockGriefing} skips it entirely so
  *   nearby base flags never log it for repair.
@@ -38,15 +40,13 @@ import org.jetbrains.annotations.Nullable;
  * <p>The despawn countdown lives on a block entity rather than a scheduled
  * block tick because {@code LevelTicks} permits only one pending tick per
  * position per block -- the scaffolding block already needs that slot for its
- * vanilla stability checks.
+ * {@code DISTANCE}/{@code BOTTOM} updates.
  *
- * <p>Stability ({@link #tick} / {@link #canSurvive}) is reimplemented here
- * rather than inherited: vanilla {@link ScaffoldingBlock#getDistance} only
- * counts {@code Blocks.SCAFFOLDING} as support, so a subclass in a column
- * would never recognize its own kind and every block above the base would
- * fall. This class's {@link #getDistance} accepts any {@link ScaffoldingBlock}
- * as support, so raider scaffolding chains with itself and with vanilla
- * scaffolding.
+ * <p>{@link #getDistance} is kept (rather than inherited) because vanilla
+ * {@link ScaffoldingBlock#getDistance} only counts {@code Blocks.SCAFFOLDING}
+ * as support, so this subclass would never recognize its own kind in a column.
+ * Its result still drives the {@code DISTANCE}/{@code BOTTOM} render
+ * properties, but no longer gates survival.
  */
 public class RaiderScaffoldingBlock extends ScaffoldingBlock implements EntityBlock {
     public static final MapCodec<ScaffoldingBlock> CODEC =
@@ -80,9 +80,12 @@ public class RaiderScaffoldingBlock extends ScaffoldingBlock implements EntityBl
 
     /**
      * Distance to the nearest supported scaffold or solid top face, capped at
-     * {@link #STABILITY_MAX_DISTANCE}. Mirrors vanilla's algorithm except any
-     * {@link ScaffoldingBlock} counts as support -- vanilla's version matches
-     * only {@code Blocks.SCAFFOLDING} by registry identity.
+     * {@link #STABILITY_MAX_DISTANCE} (the {@code DISTANCE} property's max
+     * value). Mirrors vanilla's algorithm except any {@link ScaffoldingBlock}
+     * counts as support -- vanilla's version matches only
+     * {@code Blocks.SCAFFOLDING} by registry identity. Used only to maintain
+     * the {@code DISTANCE}/{@code BOTTOM} render properties; it no longer
+     * decides whether the block can stand.
      */
     public static int getDistance(BlockGetter level, BlockPos pos) {
         BlockPos.MutableBlockPos cursor = pos.mutable().move(Direction.DOWN);
@@ -116,24 +119,23 @@ public class RaiderScaffoldingBlock extends ScaffoldingBlock implements EntityBl
         return distance > 0 && !(level.getBlockState(pos.below()).getBlock() instanceof ScaffoldingBlock);
     }
 
-    /** Vanilla's stability tick, computed with {@link #getDistance}. */
+    /**
+     * Vanilla's tick minus the collapse: {@code DISTANCE}/{@code BOTTOM} still
+     * update for rendering, but the block never falls or breaks at
+     * {@link #STABILITY_MAX_DISTANCE}.
+     */
     @Override
     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         int distance = getDistance(level, pos);
         BlockState newState = state.setValue(DISTANCE, distance).setValue(BOTTOM, isBottom(level, pos, distance));
-        if (newState.getValue(DISTANCE) == STABILITY_MAX_DISTANCE) {
-            if (state.getValue(DISTANCE) == STABILITY_MAX_DISTANCE) {
-                FallingBlockEntity.fall(level, pos, newState);
-            } else {
-                level.destroyBlock(pos, true);
-            }
-        } else if (state != newState) {
+        if (state != newState) {
             level.setBlock(pos, newState, 3);
         }
     }
 
+    /** No stability constraint: raider scaffolding survives anywhere. */
     @Override
     protected boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
-        return getDistance(level, pos) < STABILITY_MAX_DISTANCE;
+        return true;
     }
 }

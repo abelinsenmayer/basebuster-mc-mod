@@ -2,7 +2,6 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
-import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
@@ -66,7 +65,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     // Additional break ticks per point of hardness in the obstructing column
     private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
     // Upward velocity while the mob climbs inside a scaffolding column
-    private static final float SCAFFOLD_CLIMB_SPEED = 0.25F;
+    private static final float SCAFFOLD_CLIMB_SPEED = 0.4F;
 
     private int idleRepathTimestamp = -IDLE_REPATH_INTERVAL_TICKS;
     @Nullable
@@ -392,8 +391,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     /**
      * Places raider scaffolding at pos if the cell can hold one: empty space,
      * a replaceable block, or a water cell (the scaffold displaces the water).
-     * Occupied cells, lava, and cells too far from support to keep a scaffold
-     * standing are left alone.
+     * Occupied cells and lava are left alone. Support distance doesn't matter
+     * -- raider scaffolding has no stability limit and never collapses.
      */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
@@ -407,13 +406,6 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             return;
         }
         if (fluid.isEmpty() && !state.isAir() && !state.canBeReplaced()) {
-            return;
-        }
-        // A scaffold with no support within vanilla's 7-block reach becomes a
-        // falling block on its first scheduled tick (and anything above it
-        // cascades down with drops). Placing one anyway buys the mob nothing --
-        // it just produces a place->break loop that traps the raider.
-        if (RaiderScaffoldingBlock.getDistance(level, pos) >= ScaffoldingBlock.STABILITY_MAX_DISTANCE) {
             return;
         }
         // RaiderScaffoldingBlock is what gives raider scaffolding its rules:
