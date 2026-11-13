@@ -6,7 +6,7 @@ import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderKit;
-import dev.abelinsenmayer.basebuster.entities.RaiderSkinTheme;
+import dev.abelinsenmayer.basebuster.entities.RaiderSkin;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -121,9 +121,9 @@ public final class RaidSpawner {
             return false;
         }
         boss.moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
-        // One theme per raid; every member draws a random skin from it
-        RaiderSkinTheme theme = RaiderSkinTheme.random(random);
-        boss.setSkin(theme.randomSkin(random));
+        // Every spawned raider wears the generic zombie skin for now; restore
+        // a per-raid RaiderSkinTheme draw when varied skins come back
+        boss.setSkin(RaiderSkin.ZOMBIE);
 
         int distance = BaseFlagBlock.FLAG_PROTECTION_RADIUS + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
         List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
@@ -153,7 +153,7 @@ public final class RaidSpawner {
             }
             extra.setRaidId(raidId);
             extra.setRaidTier(raidTier);
-            extra.setSkin(theme.randomSkin(random));
+            extra.setSkin(RaiderSkin.ZOMBIE);
             spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i), spreadRadius, random));
             bosses.add(extra);
         }
@@ -166,7 +166,7 @@ public final class RaidSpawner {
                     continue;
                 }
                 raider.setKit(MEMBER_KITS[slot]);
-                raider.setSkin(theme.randomSkin(random));
+                raider.setSkin(RaiderSkin.ZOMBIE);
                 // Split members evenly across the group spots, then join
                 // whichever boss actually ended up closest to where they spawned
                 BlockPos spawn = findSafeSpawnNear(level, raider, spots.get(memberIndex % spots.size()), spreadRadius, random);

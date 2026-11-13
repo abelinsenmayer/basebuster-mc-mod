@@ -63,8 +63,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class RaiderEntity extends Zombie implements RangedAttackMob {
-    // -1 = no explicit skin; getSkin() falls back to a UUID-derived one so
-    // egg/summon spawns still vary without any sync setup
+    // -1 = no explicit skin; getSkin() falls back to the generic zombie
     private static final int UNSET_SKIN_ID = -1;
     private static final EntityDataAccessor<Integer> DATA_SKIN_ID =
             SynchedEntityData.defineId(RaiderEntity.class, EntityDataSerializers.INT);
@@ -108,8 +107,8 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         // almost always cheaper than skirting lava. DAMAGE_FIRE (standing on
         // magma/in fire) rises to match; synthetic tunnel/bridge nodes pay the
         // same floor via RaiderNodeEvaluator's lava-proximity check.
-        this.setPathfindingMalus(PathType.DANGER_FIRE, 24.0F);
-        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 32.0F);
+        this.setPathfindingMalus(PathType.DANGER_FIRE, 50.0F);
+        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 100.0F);
     }
 
     @Override
@@ -137,7 +136,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         });
         // Execution goals
         // Leaderless raiders on an assault get cold feet before anything else
-        this.goalSelector.addGoal(2, new FleeGoal(this));
+//        this.goalSelector.addGoal(2, new FleeGoal(this));  ABE TODO reenable
         // Melee and bow goals share a priority; the kit decides which may run.
         // A bowman without its bow falls back to the melee goal, mirroring
         // vanilla's reassessWeaponGoal behavior.
@@ -385,12 +384,13 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
 
     /**
      * The skin this raider renders with. When none was assigned (spawn egg,
-     * /summon), falls back to a deterministic skin derived from the entity's
-     * UUID so both sides agree without extra sync work.
+     * /summon), falls back to the generic zombie skin while all raiders are
+     * pinned to it; restore the UUID-derived fallback when varied skins
+     * come back.
      */
     public RaiderSkin getSkin() {
         RaiderSkin skin = RaiderSkin.byId(this.entityData.get(DATA_SKIN_ID));
-        return skin != null ? skin : RaiderSkin.forUuid(this.getUUID());
+        return skin != null ? skin : RaiderSkin.ZOMBIE;
     }
 
     /** Pins this raider to a specific skin; raids set one per member from their theme. */

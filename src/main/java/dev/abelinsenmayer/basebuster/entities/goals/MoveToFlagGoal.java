@@ -62,7 +62,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     // Max manhattan distance from the mob at which it will start placing scaffolding
     private static final int SCAFFOLD_PLACE_REACH = 4;
     // Ticks spent breaking through a node before block hardness is factored in
-    private static final int TUNNEL_BREAK_BASE_TICKS = 60;
+    private static final int TUNNEL_BREAK_BASE_TICKS = 10;
     // Additional break ticks per point of hardness in the obstructing column
     private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
     // Upward velocity while the mob climbs inside a scaffolding column
@@ -286,11 +286,6 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         boolean descending = next.y < mobFeet.getY();
         this.mob.setShiftKeyDown(descending);
         if (descending) {
-            // Traversing through a scaffold shaft needs no lateral drive;
-            // suppress it when the mob is already inside the node's column
-            if (next.x == mobFeet.getX() && next.z == mobFeet.getZ()) {
-                this.suppressSteering();
-            }
             return;
         }
 
@@ -338,10 +333,27 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             if (this.isTraversable(level, pos)
                     && !(belowState.getBlock() instanceof ScaffoldingBlock)
                     && (belowFluid.is(FluidTags.WATER)
-                        || (belowFluid.isEmpty() && (belowState.isAir() || belowState.canBeReplaced())))) {
+                        || (belowFluid.isEmpty() && (belowState.isAir() || belowState.canBeReplaced())))
+                    && !this.pathDescendsInto(path, i, below)) {
                 this.ensureScaffolding(level, below);
             }
         }
+    }
+
+    /**
+     * Whether a later path node enters the column of pos at or below its
+     * height. A scaffold laid there would plug a hole the path itself intends
+     * to drop through -- e.g. a surface-level bridge node over the shaft the
+     * mob is digging down.
+     */
+    private boolean pathDescendsInto(Path path, int index, BlockPos pos) {
+        for (int j = index + 1; j < path.getNodeCount(); j++) {
+            Node node = path.getNode(j);
+            if (node.x == pos.getX() && node.z == pos.getZ() && node.y <= pos.getY()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -36,6 +36,10 @@ public class CaptureFlagGoal extends Goal {
     private static final double EXIT_RADIUS = 4.0;
     // While past CAPTURE_RADIUS but still inside EXIT_RADIUS, drift back in
     private static final double REAPPROACH_SPEED = 1.0;
+    // Within arm's reach the LoE check is skipped: a block sitting on top of
+    // the flag clips the downward ray even though the mob is already standing
+    // at the flag and cannot path any closer
+    private static final double LOE_WAIVER_RADIUS = 1.5;
 
     private final PathfinderMob mob;
     @Nullable
@@ -128,10 +132,16 @@ public class CaptureFlagGoal extends Goal {
      * the flag itself and a MISS means the approach is unobstructed -- same
      * shape test vanilla {@link net.minecraft.world.entity.LivingEntity#hasLineOfSight}
      * performs against entities.
+     *
+     * <p>Mobs already within {@link #LOE_WAIVER_RADIUS} of the flag center are
+     * considered to have effect regardless of the ray result.
      */
     private boolean hasLineOfEffect(BlockPos flagPos) {
-        Vec3 from = this.mob.getEyePosition();
         Vec3 to = new Vec3(flagPos.getX() + 0.5, flagPos.getY() + 0.5, flagPos.getZ() + 0.5);
+        if (this.mob.distanceToSqr(to) <= LOE_WAIVER_RADIUS * LOE_WAIVER_RADIUS) {
+            return true;
+        }
+        Vec3 from = this.mob.getEyePosition();
         return this.mob.level()
                 .clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob))
                 .getType() == HitResult.Type.MISS;

@@ -7,6 +7,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.block.Blocks;
@@ -30,6 +32,9 @@ import java.util.Set;
  *   <li><b>Tunnel</b> nodes: positions the mob cannot occupy but could clear by
  *   breaking blocks. Malus scales with the hardness of the obstructing column, so
  *   digging through a wall costs roughly thickness * (base + hardness * factor).
+ *   Tunneling also works downward: a breakable floor cell underfoot emits a
+ *   node the mob drops into after the break, so raiders can mine down to
+ *   buried targets.
  *   <li><b>Bridge</b> nodes: open air positions with no floor below them. The mob
  *   can get across by placing scaffolding under its feet. Priced above walking
  *   but far below tunneling.
@@ -44,8 +49,8 @@ import java.util.Set;
 public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // Cost of tunneling through one node position: a base effort plus a
     // per-hardness surcharge so harder materials deter the pathfinder more
-    private static final float TUNNEL_MALUS_BASE = 8.0F;
-    private static final float TUNNEL_MALUS_PER_HARDNESS = 4.0F;
+    private static final float TUNNEL_MALUS_BASE = 0.1F;
+    private static final float TUNNEL_MALUS_PER_HARDNESS = 0.1F;
     // Traversing/alongside existing scaffolding is cheap -- just slower footing
     private static final float SCAFFOLD_MALUS = 1.0F;
     // One cell of an existing climbable (ladder, vines) -- vanilla maps these
@@ -55,6 +60,11 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     private static final float BRIDGE_MALUS = 12.0F;
     // One level of a scaffold pillar the mob has to build and climb
     private static final float PILLAR_MALUS = 12.0F;
+    // Digging straight down is priced below horizontal tunneling: it makes
+    // progress toward a buried target on every node, and it must stay under
+    // PILLAR_MALUS for ordinary materials so the pathfinder keeps digging a
+    // shaft it started instead of preferring to climb out and re-dig elsewhere
+    private static final float DIG_DOWN_MALUS_SCALE = 0.7F;
 
     // Positions already proposed as synthetic nodes during this search, so a
     // cell is never emitted twice (each repeat costs a separate node expansion)
@@ -89,8 +99,9 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
         int count = super.getNeighbors(outputArray, node);
 
         // Scaffold, climb, and door-open moves are emitted unconditionally;
-        // RAIDER_TUNNELING_ENABLED gates only the dig-through-blocks move
-        // inside emitHorizontalNeighbor -> tunnelMalus
+        // RAIDER_TUNNELING_ENABLED gates only the dig-through-blocks moves:
+        // emitHorizontalNeighbor -> tunnelMalus and emitVerticalNeighbors ->
+        // digDownMalus
         count = this.emitVerticalNeighbors(outputArray, count, node);
         for (Direction direction : Direction.Plane.HORIZONTAL) {
             // PathFinder allocates a fixed 32-slot neighbor array
@@ -104,16 +115,28 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     }
 
     /**
-     * Scaffold-climbing moves: down into an existing scaffold below, and up into
-     * a scaffold (climb) or open air (place-and-climb pillar) above.
+     * Vertical moves vanilla can't make: descending an existing scaffold,
+     * dropping through a floor hatch, digging through the floor underfoot,
+     * climbing a scaffold above, and pillaring up through open air.
      */
     private int emitVerticalNeighbors(Node[] outputArray, int count, Node node) {
         int x = node.x;
         int y = node.y;
         int z = node.z;
 
-        if (this.isScaffolding(x, y - 1, z) || this.isClimbable(x, y - 1, z)) {
-            count = this.emitNode(outputArray, count, x, y - 1, z, CLIMBABLE_MALUS);
+        if (!this.alreadyEmitted(outputArray, count, x, y - 1, z)) {
+            if (this.isScaffolding(x, y - 1, z) || this.isClimbable(x, y - 1, z)) {
+                count = this.emitNode(outputArray, count, x, y - 1, z, CLIMBABLE_MALUS);
+            } else if (this.isOpenableByHand(x, y - 1, z) && this.hasSafeLanding(x, y - 2, z)) {
+                // Floor hatch (e.g. a trapdoor over a drop): opens on approach
+                // like a ceiling hatch, then the mob falls through
+                count = this.emitNode(outputArray, count, x, y - 1, z, CLIMBABLE_MALUS);
+            } else {
+                float digMalus = this.digDownMalus(x, y - 1, z);
+                if (digMalus >= 0.0F) {
+                    count = this.emitNode(outputArray, count, x, y - 1, z, digMalus);
+                }
+            }
         }
 
         // Pillars can't start mid-fall; only grounded or scaffold-held nodes
@@ -333,6 +356,44 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
         for (int i = 0; i < count; i++) {
             Node node = nodes[i];
             if (node != null && node.x == x && node.y == y && node.z == z) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Tunnel cost for the dig-down move into cell (x, y, z) -- the floor under
+     * the mob's feet -- or -1 when the cell isn't a solid breakable block or
+     * the drop below it lacks safe footing within the mob's safe fall
+     * distance. The column's head cell is the space the mob already occupies,
+     * so only the floor itself adds hardness.
+     */
+    private float digDownMalus(int x, int y, int z) {
+        if (!this.hasSafeLanding(x, y - 1, z)) {
+            return -1.0F;
+        }
+        float malus = this.tunnelMalus(x, y, z);
+        return malus < 0.0F ? -1.0F : malus * DIG_DOWN_MALUS_SCALE;
+    }
+
+    /**
+     * Whether a mob dropped through cell (x, y, z) comes to rest on solid
+     * footing within its safe fall distance, without falling through lava.
+     * Scans downward; the first cell with a collision shape is the landing
+     * floor. Mirrors the drop limit vanilla applies via
+     * {@link Attributes#SAFE_FALL_DISTANCE}.
+     */
+    private boolean hasSafeLanding(int x, int y, int z) {
+        AttributeInstance safeFallDistance = this.mob.getAttribute(Attributes.SAFE_FALL_DISTANCE);
+        int maxFall = safeFallDistance != null ? (int) safeFallDistance.getValue() : 3;
+        for (int dy = 0; dy < maxFall; dy++) {
+            BlockPos pos = new BlockPos(x, y - dy, z);
+            BlockState state = this.currentContext.getBlockState(pos);
+            if (state.getFluidState().is(FluidTags.LAVA)) {
+                return false;
+            }
+            if (!state.getCollisionShape(this.currentContext.level(), pos).isEmpty()) {
                 return true;
             }
         }
