@@ -7,6 +7,9 @@ import dev.abelinsenmayer.basebuster.entities.goals.PlanSquadPathGoal;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -18,6 +21,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +33,11 @@ public class RaiderBossEntity extends RaiderEntity {
     // Base zombie height is 1.95 blocks; 1.95 * SCALE ~= 2.5
     private static final double BOSS_SCALE = 2.5 / 1.95;
     private static final String RAID_TAG = "RaidId";
+    // The squad path mirrored to clients (as packed BlockPos longs) for the
+    // debug overlay; entity data has no list type, so it rides a CompoundTag
+    private static final EntityDataAccessor<CompoundTag> DATA_SQUAD_PATH =
+            SynchedEntityData.defineId(RaiderBossEntity.class, EntityDataSerializers.COMPOUND_TAG);
+    private static final String SQUAD_PATH_TAG = "squad_path";
     // A dying boss scans this far for surviving bosses from the same raid
     // before awarding the victory banner
     private static final double RAID_MATE_SEARCH_RADIUS = 128.0;
@@ -64,6 +73,12 @@ public class RaiderBossEntity extends RaiderEntity {
     }
 
     @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(DATA_SQUAD_PATH, new CompoundTag());
+    }
+
+    @Override
     protected void registerGoals() {
         super.registerGoals();
         // Squad-route planning claims no goal flags, so it can fire alongside
@@ -89,11 +104,29 @@ public class RaiderBossEntity extends RaiderEntity {
     public void setSquadPath(List<BlockPos> waypoints, BlockPos flagPos) {
         this.squadPath = List.copyOf(waypoints);
         this.squadPathTarget = flagPos.immutable();
+        CompoundTag tag = new CompoundTag();
+        tag.putLongArray(SQUAD_PATH_TAG, this.squadPath.stream().mapToLong(BlockPos::asLong).toArray());
+        this.entityData.set(DATA_SQUAD_PATH, tag);
     }
 
     public void clearSquadPath() {
         this.squadPath = List.of();
         this.squadPathTarget = null;
+        this.entityData.set(DATA_SQUAD_PATH, new CompoundTag());
+    }
+
+    /**
+     * The squad path as synced to clients. Unlike {@link #getSquadPath}, which
+     * is populated only on the server, this reads entity data so it resolves
+     * on both sides -- the debug renderer's source of truth.
+     */
+    public List<BlockPos> getSyncedSquadPath() {
+        long[] packed = this.entityData.get(DATA_SQUAD_PATH).getLongArray(SQUAD_PATH_TAG);
+        List<BlockPos> waypoints = new ArrayList<>(packed.length);
+        for (long pos : packed) {
+            waypoints.add(BlockPos.of(pos));
+        }
+        return waypoints;
     }
 
     /**

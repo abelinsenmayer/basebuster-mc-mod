@@ -84,6 +84,10 @@ public class Config {
             .comment("Whether to log every goal a raider starts or stops, so its decision-making is visible")
             .define("raiderDebug.logGoalSwitching", false);
 
+    public static final ModConfigSpec.BooleanValue RAIDER_DEBUG_RENDER_SQUAD_PATH = BUILDER
+            .comment("Whether to render red lines between the decimated waypoints of each living raider boss's squad path")
+            .define("raiderDebug.renderSquadPath", false);
+
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
             .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);

@@ -97,6 +97,22 @@ public class BaseFlagBlock extends Block implements EntityBlock {
 
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        // Debug toggle: right-clicking with a stick flips the protection-radius
+        // overlay. Checked first so shift-clicking a flag with a stick can't
+        // accidentally advance a capture.
+        if (stack.is(Items.STICK)) {
+            if (!level.isClientSide) {
+                BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+                if (blockEntity != null) {
+                    boolean visible = blockEntity.toggleDebugBoundary();
+                    level.sendBlockUpdated(pos, state, state, 3);
+                    player.displayClientMessage(
+                            Component.literal("Flag boundary " + (visible ? "shown" : "hidden")), true);
+                }
+            }
+            return ItemInteractionResult.sidedSuccess(level.isClientSide);
+        }
+
         // Raid triggers: a raider spawn egg or any ominous bottle (all five
         // types share one item; the amplifier lives in a data component)
         if (stack.is(BaseBuster.RAIDER_SPAWN_EGG.get()) || stack.is(Items.OMINOUS_BOTTLE)) {

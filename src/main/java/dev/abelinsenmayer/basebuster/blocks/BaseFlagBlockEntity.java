@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -74,6 +75,10 @@ public class BaseFlagBlockEntity extends BlockEntity {
     // Capturer id -> game time of its most recent capture tick
     private final Map<UUID, Long> capturerTicks = new HashMap<>();
 
+    // Whether the debug overlay renders the protection-radius sphere for this flag.
+    // Persisted and synced to clients; toggled by right-clicking with a stick.
+    private boolean debugBoundary = false;
+
     // Progress toward a player's right-click capture, in [0, 1)
     private float playerCaptureProgress = 0.0F;
     // The player currently capturing; a different player's click resets progress
@@ -93,6 +98,42 @@ public class BaseFlagBlockEntity extends BlockEntity {
 
     public int getBaseLevel() {
         return baseLevel;
+    }
+
+    /**
+     * Flips the client-side protection-boundary overlay and returns its new state.
+     * The caller is responsible for {@code sendBlockUpdated} so clients learn of the change.
+     */
+    public boolean toggleDebugBoundary() {
+        this.debugBoundary = !this.debugBoundary;
+        setChanged();
+        return this.debugBoundary;
+    }
+
+    @Override
+    public void clearRemoved() {
+        super.clearRemoved();
+        syncDebugOverlayState();
+    }
+
+    @Override
+    public void setRemoved() {
+        // Removed from the client level (unloaded chunk, broken flag): stop rendering
+        FlagBoundaryDebugState.remove(getBlockPos());
+        super.setRemoved();
+    }
+
+    // Keeps the client-side overlay set in step with the persisted flag. No-ops server-side
+    // and whenever the level isn't known yet (e.g. mid chunk deserialization).
+    private void syncDebugOverlayState() {
+        if (this.level == null || !this.level.isClientSide) {
+            return;
+        }
+        if (this.debugBoundary) {
+            FlagBoundaryDebugState.add(getBlockPos());
+        } else {
+            FlagBoundaryDebugState.remove(getBlockPos());
+        }
     }
 
     /**
@@ -270,6 +311,10 @@ public class BaseFlagBlockEntity extends BlockEntity {
         if (tag.contains("base_level")) {
             this.baseLevel = tag.getInt("base_level");
         }
+        if (tag.contains("debug_boundary")) {
+            this.debugBoundary = tag.getBoolean("debug_boundary");
+        }
+        syncDebugOverlayState();
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");
             int count = tag.getInt("repair_targets_count");
@@ -291,6 +336,9 @@ public class BaseFlagBlockEntity extends BlockEntity {
             tag.putString("owner_name", owner.getDisplayName().getString());
         }
         tag.putInt("base_level", this.baseLevel);
+        if (this.debugBoundary) {
+            tag.putBoolean("debug_boundary", true);
+        }
         if (!repairTargets.isEmpty()) {
             CompoundTag repairTargetsTag = new CompoundTag();
             int i = 0;
