@@ -136,7 +136,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         });
         // Execution goals
         // Leaderless raiders on an assault get cold feet before anything else
-        this.goalSelector.addGoal(2, new FleeGoal(this));
+//        this.goalSelector.addGoal(2, new FleeGoal(this));  ABE TODO reenable
         // Melee and bow goals share a priority; the kit decides which may run.
         // A bowman without its bow falls back to the melee goal, mirroring
         // vanilla's reassessWeaponGoal behavior.

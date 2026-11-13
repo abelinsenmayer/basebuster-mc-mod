@@ -67,19 +67,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
     // Upward velocity while the mob climbs inside a scaffolding column
     private static final float SCAFFOLD_CLIMB_SPEED = 0.25F;
-    // Half-width of the lane band raiders spread into while marching: each
-    // raider aims its repaths at the flag shifted sideways by laneOffset,
-    // perpendicular to its bearing to the flag, so a clustered squad fans
-    // out across different approach lines instead of pathing single-file
-    private static final double LANE_SPREAD_BLOCKS = 30.0;
-    // The lane offset fades to zero across this band of flag distance so
-    // the last stretch of every route converges on the flag itself
-    private static final double LANE_FADE_END_DIST = 6.0;
-    private static final double LANE_FADE_START_DIST = 30.0;
 
     private int idleRepathTimestamp = -IDLE_REPATH_INTERVAL_TICKS;
-    // This raider's sideways slot within the lane band, rolled per march
-    private double laneOffset;
     @Nullable
     private BlockPos breakingNodePos;
     private int breakTime;
@@ -125,12 +114,6 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         this.tickDoorUse();
         this.tickTunneling();
         this.tickScaffolding();
-    }
-
-    @Override
-    public void start() {
-        super.start();
-        this.laneOffset = (this.mob.getRandom().nextDouble() * 2.0 - 1.0) * LANE_SPREAD_BLOCKS;
     }
 
     @Override
@@ -591,33 +574,8 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     @Override
     protected void moveMobToBlock() {
         BlockPos target = this.getMoveToTarget();
-        Vec3 dest = this.laneTarget(target);
         this.mob.getNavigation()
-                .moveTo(dest.x, target.getY(), dest.z, this.speedModifier);
-    }
-
-    /**
-     * The position this repath actually aims for: the flag center pushed
-     * sideways by this raider's lane offset, along the axis perpendicular
-     * to the current raider-&gt;flag bearing. Aiming the A* search itself at
-     * the offset point is what spreads raiders over different terrain
-     * routes -- partial paths toward it end on distinct approach lines.
-     * The offset fades to zero near the flag so lanes converge on arrival.
-     */
-    private Vec3 laneTarget(BlockPos flag) {
-        double dx = flag.getX() + 0.5 - this.mob.getX();
-        double dz = flag.getZ() + 0.5 - this.mob.getZ();
-        double dist = Math.sqrt(dx * dx + dz * dz);
-        double fade = Mth.clamp(
-                (dist - LANE_FADE_END_DIST) / (LANE_FADE_START_DIST - LANE_FADE_END_DIST), 0.0, 1.0);
-        double offset = this.laneOffset * fade;
-        if (dist < 1.0e-3 || offset == 0.0) {
-            return new Vec3(flag.getX() + 0.5, flag.getY(), flag.getZ() + 0.5);
-        }
-        // Perpendicular unit vector to the raider->flag bearing
-        double perpX = -dz / dist;
-        double perpZ = dx / dist;
-        return new Vec3(flag.getX() + 0.5 + perpX * offset, flag.getY(), flag.getZ() + 0.5 + perpZ * offset);
+                .moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
     }
 
     @Override

@@ -284,7 +284,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
 
     /**
      * The malus floor for a synthetic node based on lava proximity: the mob's
-     * DANGER_FIRE malus when lava touches the column horizontally (two blocks
+     * DANGER_FIRE malus when lava touches the column horizontally (one block
      * up or down included, like {@code checkNeighbourBlocks}), else zero.
      * Vanilla applies DANGER_FIRE only to cells it classifies as WALKABLE; the
      * cells synthetic moves fill in -- wall interiors, gap air -- come out
