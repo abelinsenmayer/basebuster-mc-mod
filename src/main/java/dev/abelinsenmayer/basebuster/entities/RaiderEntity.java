@@ -440,6 +440,12 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         }
     }
 
+    // ABE TODO remove this when done debugging
+    @Override
+    public boolean isCurrentlyGlowing() {
+        return Config.RAIDER_BOSS_GLOWING.get() || super.isCurrentlyGlowing();
+    }
+
     /**
      * Whether the raider is on an assault: a flag not owned by the raider
      * faction exists for it to march on. Raiders guarding an already-captured

@@ -49,17 +49,17 @@ import java.util.Set;
 public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // Cost of tunneling through one node position: a base effort plus a
     // per-hardness surcharge so harder materials deter the pathfinder more
-    private static final float TUNNEL_MALUS_BASE = 0.1F;
-    private static final float TUNNEL_MALUS_PER_HARDNESS = 1.0F;
+    private static final float TUNNEL_MALUS_BASE = 4F;
+    private static final float TUNNEL_MALUS_PER_HARDNESS = 8.0F;
     // Traversing/alongside existing scaffolding is cheap -- just slower footing
     private static final float SCAFFOLD_MALUS = 1.0F;
     // One cell of an existing climbable (ladder, vines) -- vanilla maps these
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 12.0F;
+    private static final float BRIDGE_MALUS = 2.0F;
     // One level of a scaffold pillar the mob has to build and climb
-    private static final float PILLAR_MALUS = 12.0F;
+    private static final float PILLAR_MALUS = 2.0F;
     // Digging straight down is priced below horizontal tunneling: it makes
     // progress toward a buried target on every node, and it must stay under
     // PILLAR_MALUS for ordinary materials so the pathfinder keeps digging a
