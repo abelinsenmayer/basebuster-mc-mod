@@ -327,6 +327,12 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         if (waterEfficiency != null && !this.sinksInWater()) {
             waterEfficiency.setBaseValue(SWIM_MOVEMENT_EFFICIENCY);
         }
+        // Walk up full blocks instead of jumping so single-block ledges and
+        // slab/stair defenses don't stall the path
+        AttributeInstance stepHeight = this.getAttribute(Attributes.STEP_HEIGHT);
+        if (stepHeight != null) {
+            stepHeight.setBaseValue(1.0);
+        }
         return result;
     }
 

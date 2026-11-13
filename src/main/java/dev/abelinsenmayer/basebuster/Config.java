@@ -50,7 +50,7 @@ public class Config {
 
     public static final ModConfigSpec.BooleanValue RAIDER_SQUAD_FORMATION_ENABLED = BUILDER
             .comment("Whether squad members march in a chevron formation around their leader instead of steering along the squad path's waypoints")
-            .define("raiderSquad.formationEnabled", true);
+            .define("raiderSquad.formationEnabled", false);
 
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_PATHING_MAX_DISTANCE = BUILDER
             .comment("Maximum flag distance a squad path search will be attempted over")
