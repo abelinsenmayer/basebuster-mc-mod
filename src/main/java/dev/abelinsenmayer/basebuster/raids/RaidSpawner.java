@@ -82,15 +82,19 @@ public final class RaidSpawner {
     private static final int PATH_NODE_BUDGET = 8192;
     // Manhattan distance from a candidate at which the path counts as reached
     private static final int TARGET_ACCURACY = 3;
+    // Water malus applied to the probe during spawn-time searches only: vanilla
+    // prices wading at 8, cheap enough that a lake crossing beats the land
+    // detour and anchor selection keeps landing across water
+    private static final float SPAWN_SEARCH_WATER_MALUS = 20.0F;
     // Raid composition per flag base level:
     // RAID_COMPOSITION[level - 1] = {bosses, bowmen, sword-and-board, tanks}.
     // Levels past the table clamp to the last row.
     private static final int[][] RAID_COMPOSITION = {
-            {1, 4, 6, 0},    // Level 1
-            {2, 6, 8, 2},    // Level 2
-            {3, 12, 14, 6},  // Level 3
-            {4, 26, 20, 8},  // Level 4
-            {5, 26, 30, 10}, // Level 5
+            {1, 6, 9, 0},    // Level 1
+            {2, 9, 12, 3},   // Level 2
+            {3, 18, 21, 9},  // Level 3
+            {4, 39, 30, 12}, // Level 4
+            {5, 39, 45, 15}, // Level 5
     };
     // Kits assigned to the member columns of RAID_COMPOSITION, in order
     private static final RaiderKit[] MEMBER_KITS = {RaiderKit.BOWMAN, RaiderKit.SWORD_AND_BOARD, RaiderKit.TANK};
@@ -145,13 +149,24 @@ public final class RaidSpawner {
         boss.setRaidId(raidId);
         boss.setRaidTier(raidTier);
 
-        // One spawn spot per boss, spread radially around the flag when the
-        // candidate terrain allows it
-        AnchorSelection selection = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+        // Both spawn-time searches run under a raised water malus so lake
+        // crossings price above the land detours vanilla's 8 would lose to.
+        // Reset afterward: the probe spawns as a real boss and should path
+        // with normal water costs from then on.
+        boss.setPathfindingMalus(PathType.WATER, SPAWN_SEARCH_WATER_MALUS);
+        AnchorSelection selection;
+        List<Path> groupPaths;
+        try {
+            // One spawn spot per boss, spread radially around the flag when the
+            // candidate terrain allows it
+            selection = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+            // One rough route per group spot, all searched while the probe still
+            // stands at the flag so every path starts there
+            groupPaths = groupPaths(level, flagPos, selection.spots(), boss, distance, selection.primaryPath());
+        } finally {
+            boss.setPathfindingMalus(PathType.WATER, PathType.WATER.getMalus());
+        }
         List<BlockPos> spots = selection.spots();
-        // One rough route per group spot, all searched while the probe still
-        // stands at the flag so every path starts there
-        List<Path> groupPaths = groupPaths(level, flagPos, spots, boss, distance, selection.primaryPath());
         spawnMember(level, boss, spots.get(0));
         assignSquadPath(boss, groupPaths.get(0), flagPos);
 
@@ -180,6 +195,8 @@ public final class RaidSpawner {
                     continue;
                 }
                 raider.setKit(MEMBER_KITS[slot]);
+                // Tier must be set before finalizeSpawn runs the kit's equip
+                raider.setRaidTier(raidTier);
                 raider.setSkin(RaiderSkin.ZOMBIE);
                 // Split members evenly across the group spots, then join
                 // whichever boss actually ended up closest to where they spawned

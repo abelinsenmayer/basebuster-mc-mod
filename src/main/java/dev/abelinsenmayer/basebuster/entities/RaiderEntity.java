@@ -70,6 +70,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
             SynchedEntityData.defineId(RaiderEntity.class, EntityDataSerializers.INT);
     private static final String SKIN_TAG = "RaiderSkin";
     private static final String KIT_TAG = "RaiderKit";
+    private static final String RAID_TIER_TAG = "RaidTier";
     private static final int BOW_ATTACK_INTERVAL_TICKS = 20;
     private static final float BOW_ATTACK_RADIUS = 40.0F;
     // Vanilla skeletons fire at 1.6 blocks/tick over a 15-block range. Launch
@@ -93,6 +94,10 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // UUID-derived kit so goal checks never see null
     @Nullable
     private RaiderKit kit;
+    // The tier of the raid this raider spawned in, which scales its kit's
+    // gear quality. Tier 1 (the weakest loadout) for egg/summon spawns,
+    // which aren't part of a raid
+    private int raidTier = 1;
     // Last tick's running goals; diffed each server AI tick to log transitions
     private List<Goal> runningGoals = List.of();
     private List<Goal> runningTargetGoals = List.of();
@@ -430,11 +435,27 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.kit = kit;
     }
 
+    /**
+     * The tier of the raid this raider spawned in. Kits read it during
+     * {@link RaiderKit#equip} to pick their gear; bosses also use it to pick
+     * the victory banner the raid drops.
+     */
+    public int getRaidTier() {
+        return this.raidTier;
+    }
+
+    /** Tags this raider with its raid's tier; RaidSpawner sets it before
+     *  finalizeSpawn so the kit equips the tier's loadout. */
+    public void setRaidTier(int raidTier) {
+        this.raidTier = raidTier;
+    }
+
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString(SKIN_TAG, this.getSkin().name());
         tag.putString(KIT_TAG, this.getKit().name());
+        tag.putInt(RAID_TIER_TAG, this.raidTier);
     }
 
     @Override
@@ -453,6 +474,9 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
             } catch (IllegalArgumentException ignored) {
                 // Unknown kit name (e.g. from an older save); fall back to the default
             }
+        }
+        if (tag.contains(RAID_TIER_TAG)) {
+            this.raidTier = tag.getInt(RAID_TIER_TAG);
         }
     }
 

@@ -29,7 +29,6 @@ public class RaiderBossEntity extends RaiderEntity {
     // Base zombie height is 1.95 blocks; 1.95 * SCALE ~= 2.5
     private static final double BOSS_SCALE = 2.5 / 1.95;
     private static final String RAID_TAG = "RaidId";
-    private static final String RAID_TIER_TAG = "RaidTier";
     // A dying boss scans this far for surviving bosses from the same raid
     // before awarding the victory banner
     private static final double RAID_MATE_SEARCH_RADIUS = 128.0;
@@ -43,8 +42,6 @@ public class RaiderBossEntity extends RaiderEntity {
     // not part of a raid and never drop a banner
     @Nullable
     private UUID raidId;
-    // The banner tier the raid's last boss drops; only meaningful with a raidId
-    private int raidTier = VictoryBannerBlock.MIN_TIER;
     // Rough route to squadPathTarget planned by PlanSquadPathGoal (or assigned
     // at raid spawn), consumed by FollowSquadPathGoal. Immutable snapshots;
     // not persisted -- the goal re-plans after a world load
@@ -159,16 +156,11 @@ public class RaiderBossEntity extends RaiderEntity {
         this.raidId = raidId;
     }
 
-    /** Sets the victory banner tier this raid's last boss drops. */
-    public void setRaidTier(int raidTier) {
-        this.raidTier = raidTier;
-    }
-
     @Override
     protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit);
         if (this.isLastBossOfRaid(level)) {
-            int index = Math.clamp(this.raidTier, VictoryBannerBlock.MIN_TIER, VictoryBannerBlock.MAX_TIER) - 1;
+            int index = Math.clamp(this.getRaidTier(), VictoryBannerBlock.MIN_TIER, VictoryBannerBlock.MAX_TIER) - 1;
             this.spawnAtLocation(new ItemStack(BaseBuster.VICTORY_BANNER_ITEMS.get(index).get()));
         }
     }
@@ -196,7 +188,6 @@ public class RaiderBossEntity extends RaiderEntity {
         if (this.raidId != null) {
             tag.putUUID(RAID_TAG, this.raidId);
         }
-        tag.putInt(RAID_TIER_TAG, this.raidTier);
     }
 
     @Override
@@ -204,9 +195,6 @@ public class RaiderBossEntity extends RaiderEntity {
         super.readAdditionalSaveData(tag);
         if (tag.hasUUID(RAID_TAG)) {
             this.raidId = tag.getUUID(RAID_TAG);
-        }
-        if (tag.contains(RAID_TIER_TAG)) {
-            this.raidTier = tag.getInt(RAID_TIER_TAG);
         }
     }
 }
