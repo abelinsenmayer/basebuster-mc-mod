@@ -74,17 +74,44 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // a real cap so thick fortifications price out instead of flooding the
     // search frontier with tunnel candidates
     private final float tunnelHardnessCap;
+    // How far a synthetic air node (bridge, pillar) may float above real
+    // support, in cells. MAX_VALUE keeps ordinary navigation unrestricted;
+    // coarse long-range searches pass a real bound so the aerial graph stays
+    // a thin shell around terrain and structures rather than a volume of
+    // open sky -- the dominant expansion cost for high-altitude targets
+    private final int maxAerialHeight;
+    // Summed column hardness a coarse search tunnels through, ~2-3 blocks of
+    // stone; thicker fortifications price out of the search space entirely
+    private static final float COARSE_TUNNEL_HARDNESS_CAP = 4.0F;
 
     public RaiderNodeEvaluator(Mob mob) {
-        this(mob, Float.MAX_VALUE);
+        this(mob, Float.MAX_VALUE, Integer.MAX_VALUE);
     }
 
     public RaiderNodeEvaluator(Mob mob, float tunnelHardnessCap) {
+        this(mob, tunnelHardnessCap, Integer.MAX_VALUE);
+    }
+
+    public RaiderNodeEvaluator(Mob mob, float tunnelHardnessCap, int maxAerialHeight) {
         // prepare() normally assigns this.mob; seeding it in the ctor keeps
         // canFloat() correct even before the first pathfind (jumpInFluid
         // consults it on every submerged jump)
         this.mob = mob;
         this.tunnelHardnessCap = tunnelHardnessCap;
+        this.maxAerialHeight = maxAerialHeight;
+    }
+
+    /**
+     * The evaluator variant for bounded long-range searches (raid spawn
+     * anchors, squad routes): tunnels cap at
+     * {@link #COARSE_TUNNEL_HARDNESS_CAP} and synthetic air nodes must anchor
+     * within {@link Config#RAID_SEARCH_MAX_AIR_HEIGHT} of real support. Both
+     * bounds shrink the search space itself -- costs can't, since a high flag
+     * often leaves the aerial route as the only route.
+     */
+    public static RaiderNodeEvaluator coarse(Mob mob) {
+        return new RaiderNodeEvaluator(mob, COARSE_TUNNEL_HARDNESS_CAP,
+                Config.RAID_SEARCH_MAX_AIR_HEIGHT.get());
     }
 
     /**
@@ -161,7 +188,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             // mob climbs through it
             count = this.emitNode(outputArray, count, x, y + 1, z, CLIMBABLE_MALUS);
         } else if (this.isReplaceableForScaffold(x, y + 1, z)
-                && this.isReplaceableForScaffold(x, y + 2, z)) {
+                && this.isReplaceableForScaffold(x, y + 2, z)
+                && this.isNearSupport(x, y + 1, z)) {
             count = this.emitNode(outputArray, count, x, y + 1, z, PILLAR_MALUS);
         }
         return count;
@@ -189,7 +217,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             if (this.isScaffolding(x, y - 1, z)) {
                 return this.emitNode(outputArray, count, x, y, z, SCAFFOLD_MALUS);
             }
-            if (this.isReplaceableForScaffold(x, y - 1, z)) {
+            if (this.isReplaceableForScaffold(x, y - 1, z)
+                    && this.isNearSupport(x, y, z)) {
                 return this.emitNode(outputArray, count, x, y, z, BRIDGE_MALUS);
             }
             return count;
@@ -385,6 +414,37 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
         }
         float malus = this.tunnelMalus(x, y, z);
         return malus < 0.0F ? -1.0F : malus * DIG_DOWN_MALUS_SCALE;
+    }
+
+    /**
+     * Whether the column below (x, y, z) connects to the real world within
+     * {@link #maxAerialHeight} cells: a colliding block, existing scaffolding,
+     * or a climbable. Synthetic air nodes are gated on this so coarse searches
+     * hug terrain and structures (tower faces, cliffs, walls -- all legal)
+     * instead of expanding through a volume of unsupported sky. The cap is
+     * the number of empty cells between the node and support, so a bridge or
+     * pillar can still span gaps that shallow.
+     */
+    private boolean isNearSupport(int x, int y, int z) {
+        if (this.maxAerialHeight == Integer.MAX_VALUE) {
+            return true;
+        }
+        int minY = this.currentContext.level().getMinBuildHeight();
+        for (int dy = 1; dy <= this.maxAerialHeight; dy++) {
+            int supportY = y - dy;
+            if (supportY < minY) {
+                break;
+            }
+            if (this.isScaffolding(x, supportY, z) || this.isClimbable(x, supportY, z)) {
+                return true;
+            }
+            BlockPos pos = new BlockPos(x, supportY, z);
+            if (!this.currentContext.getBlockState(pos)
+                    .getCollisionShape(this.currentContext.level(), pos).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

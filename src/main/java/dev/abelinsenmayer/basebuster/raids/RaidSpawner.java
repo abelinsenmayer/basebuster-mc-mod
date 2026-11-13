@@ -238,10 +238,12 @@ public final class RaidSpawner {
     }
 
     /**
-     * The path evaluator raiders use, prepared for a standalone search.
+     * A standalone search from the flag, using the coarse evaluator variant:
+     * spawn-time searches are long-range, so tunnel and aerial emissions stay
+     * bounded rather than flooding the budget in open sky or fortifications.
      */
     private static PathFinder newFlagPathFinder(Mob probe, int budget) {
-        RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator(probe);
+        RaiderNodeEvaluator evaluator = RaiderNodeEvaluator.coarse(probe);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
         return new PathFinder(evaluator, budget);

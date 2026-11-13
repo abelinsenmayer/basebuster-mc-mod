@@ -64,6 +64,10 @@ public class Config {
             .comment("Whether every raid group spawns together at the single most reachable point instead of spreading around the flag")
             .define("raidSpawning.singleSpawnPoint", true);
 
+    public static final ModConfigSpec.IntValue RAID_SEARCH_MAX_AIR_HEIGHT = BUILDER
+            .comment("Blocks above solid support that coarse long-range path searches (raid spawn anchors, squad routes) may plan scaffold moves; bounds the aerial search space for high flags")
+            .defineInRange("raidPathing.maxAirHeight", 24, 4, 128);
+
     public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER
             .comment("Movement speed multiplier applied to a raider while it is fleeing")
             .defineInRange("raiderFlee.speedMultiplier", 1.3, 1.0, 10.0);

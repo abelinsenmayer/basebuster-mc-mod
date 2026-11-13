@@ -31,8 +31,9 @@ import java.util.Set;
  *   generate a corridor of terrain on the server thread.
  *   <li><b>Scaled node budget</b>: expansions grow with distance and clamp at
  *   {@link Config#RAIDER_SQUAD_PATHING_MAX_NODES}, bounding worst-case cost.
- *   <li><b>Coarse evaluator</b>: {@link #TUNNEL_HARDNESS_CAP} keeps the search
- *   from flooding its frontier with tunnels through thick fortifications; a
+ *   <li><b>Coarse evaluator</b>: {@link RaiderNodeEvaluator#coarse} bounds the
+ *   search space itself -- tunnel hardness and aerial distance above support
+ *   -- so thick fortifications and open sky can't flood the frontier. A
  *   mostly-walk corridor is fine since followers re-path each leg with the
  *   full evaluator anyway.
  * </ul>
@@ -52,8 +53,6 @@ public final class SquadPathSearch {
     private static final double MIN_SEARCH_DISTANCE = 32.0;
     // Node expansions budgeted per block of manhattan distance to the flag
     private static final int NODES_PER_BLOCK = 128;
-    // Coarse-search tunnels cap at ~2-3 blocks of stone per column
-    private static final float TUNNEL_HARDNESS_CAP = 4.0F;
     private static final int TARGET_ACCURACY = 2;
     private static final float SEARCH_DEPTH_MULTIPLIER = 1.0F;
 
@@ -89,7 +88,7 @@ public final class SquadPathSearch {
         int budget = (int) Math.min(
                 (long) distance * NODES_PER_BLOCK,
                 Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
-        RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator(mob, TUNNEL_HARDNESS_CAP);
+        RaiderNodeEvaluator evaluator = RaiderNodeEvaluator.coarse(mob);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
         PathFinder finder = new PathFinder(evaluator, budget);
