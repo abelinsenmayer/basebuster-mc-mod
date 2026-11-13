@@ -62,7 +62,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     // Max manhattan distance from the mob at which it will start placing scaffolding
     private static final int SCAFFOLD_PLACE_REACH = 4;
     // Ticks spent breaking through a node before block hardness is factored in
-    private static final int TUNNEL_BREAK_BASE_TICKS = 10;
+    private static final int TUNNEL_BREAK_BASE_TICKS = 30;
     // Additional break ticks per point of hardness in the obstructing column
     private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
     // Upward velocity while the mob climbs inside a scaffolding column

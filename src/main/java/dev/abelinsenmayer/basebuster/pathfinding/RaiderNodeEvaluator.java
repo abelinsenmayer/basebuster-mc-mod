@@ -50,7 +50,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // Cost of tunneling through one node position: a base effort plus a
     // per-hardness surcharge so harder materials deter the pathfinder more
     private static final float TUNNEL_MALUS_BASE = 0.1F;
-    private static final float TUNNEL_MALUS_PER_HARDNESS = 0.1F;
+    private static final float TUNNEL_MALUS_PER_HARDNESS = 1.0F;
     // Traversing/alongside existing scaffolding is cheap -- just slower footing
     private static final float SCAFFOLD_MALUS = 1.0F;
     // One cell of an existing climbable (ladder, vines) -- vanilla maps these
@@ -292,13 +292,13 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
      * otherwise carry no danger cost at all.
      */
     private float lavaProximityMalus(int x, int y, int z) {
-        for (int dy = 0; dy < this.entityHeight; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
+        for (int dy = 0; dy < this.entityHeight+1; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
                     if (dx == 0 && dz == 0) {
                         continue;
                     }
-                    for (int dj = -1; dj <= 1; dj++) {
+                    for (int dj = -2; dj <= 2; dj++) {
                         if (this.currentContext.getBlockState(new BlockPos(x + dx, y + dy + dj, z + dz))
                                 .getFluidState().is(FluidTags.LAVA)) {
                             return this.mob.getPathfindingMalus(PathType.DANGER_FIRE);
