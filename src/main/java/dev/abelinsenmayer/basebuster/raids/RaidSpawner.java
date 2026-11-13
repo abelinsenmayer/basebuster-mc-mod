@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.raids;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
@@ -8,6 +9,7 @@ import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderKit;
 import dev.abelinsenmayer.basebuster.entities.RaiderSkin;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
+import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -30,6 +32,8 @@ import net.minecraft.world.phys.Vec3;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,7 +62,11 @@ import java.util.UUID;
  *   <li>Raids with multiple bosses get one spot per boss: the extras take
  *   the candidates nearest evenly spaced angles around the flag, so groups
  *   spread radially when the ring allows it. When terrain leaves too few
- *   candidates, spots repeat rather than shrinking the raid.
+ *   candidates — or when {@code raidSpawning.singleSpawnPoint} is set —
+ *   spots repeat rather than shrinking the raid.
+ *   <li>Every group's spot gets its own flag-to-spot search; each resulting
+ *   path is decimated into waypoints and stored on that group's boss as the
+ *   squad's shared rough route (see {@link SquadPathSearch}).
  * </ol>
  *
  * <p>The search is synchronous and bounded by {@link #PATH_NODE_BUDGET}, so it
@@ -139,8 +147,13 @@ public final class RaidSpawner {
 
         // One spawn spot per boss, spread radially around the flag when the
         // candidate terrain allows it
-        List<BlockPos> spots = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+        AnchorSelection selection = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+        List<BlockPos> spots = selection.spots();
+        // One rough route per group spot, all searched while the probe still
+        // stands at the flag so every path starts there
+        List<Path> groupPaths = groupPaths(level, flagPos, spots, boss, distance, selection.primaryPath());
         spawnMember(level, boss, spots.get(0));
+        assignSquadPath(boss, groupPaths.get(0), flagPos);
 
         List<RaiderBossEntity> bosses = new ArrayList<>();
         bosses.add(boss);
@@ -155,6 +168,7 @@ public final class RaidSpawner {
             extra.setRaidTier(raidTier);
             extra.setSkin(RaiderSkin.ZOMBIE);
             spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i), spreadRadius, random));
+            assignSquadPath(extra, groupPaths.get(i), flagPos);
             bosses.add(extra);
         }
 
@@ -224,61 +238,127 @@ public final class RaidSpawner {
     }
 
     /**
-     * Picks the candidate that the raider path evaluator can reach from the flag
-     * for the least cost. A single multi-target A* yields the cheapest reached
-     * anchor; when the budget runs out first, the partial path still points at
-     * the best-approached candidate. Falls back to a random anchor if the search
-     * finds nothing at all.
+     * The path evaluator raiders use, prepared for a standalone search.
      */
-    private static BlockPos pickAnchor(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance) {
+    private static PathFinder newFlagPathFinder(Mob probe, int budget) {
         RaiderNodeEvaluator evaluator = new RaiderNodeEvaluator(probe);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
-        PathFinder finder = new PathFinder(evaluator, PATH_NODE_BUDGET);
+        return new PathFinder(evaluator, budget);
+    }
 
-        // PathNavigationRegion expects the low corner first (it sizes its chunk
-        // array by subtraction), so build explicit min/max corners
-        int minX = Integer.MAX_VALUE;
-        int minZ = Integer.MAX_VALUE;
-        int maxX = Integer.MIN_VALUE;
-        int maxZ = Integer.MIN_VALUE;
-        for (BlockPos pos : anchors) {
+    /**
+     * The search region covering the flag and every target plus padding.
+     * PathNavigationRegion expects the low corner first (it sizes its chunk
+     * array by subtraction), so build explicit min/max corners.
+     */
+    private static PathNavigationRegion flagRegion(ServerLevel level, BlockPos flagPos, Collection<BlockPos> targets) {
+        int minX = flagPos.getX();
+        int minZ = flagPos.getZ();
+        int maxX = flagPos.getX();
+        int maxZ = flagPos.getZ();
+        for (BlockPos pos : targets) {
             minX = Math.min(minX, pos.getX());
             minZ = Math.min(minZ, pos.getZ());
             maxX = Math.max(maxX, pos.getX());
             maxZ = Math.max(maxZ, pos.getZ());
         }
-        minX = Math.min(minX, flagPos.getX()) - REGION_PADDING;
-        minZ = Math.min(minZ, flagPos.getZ()) - REGION_PADDING;
-        maxX = Math.max(maxX, flagPos.getX()) + REGION_PADDING;
-        maxZ = Math.max(maxZ, flagPos.getZ()) + REGION_PADDING;
-        PathNavigationRegion region = new PathNavigationRegion(
+        return new PathNavigationRegion(
                 level,
-                new BlockPos(minX, level.getMinBuildHeight(), minZ),
-                new BlockPos(maxX, level.getMaxBuildHeight() - 1, maxZ));
+                new BlockPos(minX - REGION_PADDING, level.getMinBuildHeight(), minZ - REGION_PADDING),
+                new BlockPos(maxX + REGION_PADDING, level.getMaxBuildHeight() - 1, maxZ + REGION_PADDING));
+    }
 
-        Path path = finder.findPath(region, probe, Set.copyOf(anchors),
+    /**
+     * Runs one multi-target A* from the flag toward every anchor. A* reaches
+     * the cheapest candidate first (or reports the best-approached one on a
+     * partial path), which approximates "the nearest area a raider could
+     * actually get in from." Null when the search finds nothing at all.
+     */
+    @Nullable
+    private static Path pickAnchorPath(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance) {
+        PathFinder finder = newFlagPathFinder(probe, PATH_NODE_BUDGET);
+        PathNavigationRegion region = flagRegion(level, flagPos, anchors);
+        return finder.findPath(region, probe, Set.copyOf(anchors),
                 (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
-        if (path != null) {
-            // Reached anchor, or the best-approached one on a partial path
-            return path.getTarget();
+    }
+
+    /**
+     * One flag-to-spot path per group spot. The multi-target anchor search
+     * doubles as the first group's route; the remaining spots each get their
+     * own bounded search off a shared finder and region. Null entries (search
+     * failed or squad pathing disabled) leave that squad on ordinary partial
+     * pathing.
+     */
+    private static List<Path> groupPaths(ServerLevel level, BlockPos flagPos, List<BlockPos> spots, Mob probe, int distance, @Nullable Path primaryPath) {
+        List<Path> paths = new ArrayList<>(Collections.nCopies(spots.size(), (Path) null));
+        if (!Config.RAIDER_SQUAD_PATHING_ENABLED.get()) {
+            return paths;
         }
-        return anchors.get(level.getRandom().nextInt(anchors.size()));
+        if (primaryPath != null) {
+            paths.set(0, primaryPath);
+        }
+        PathFinder finder = newFlagPathFinder(probe, PATH_NODE_BUDGET);
+        PathNavigationRegion region = flagRegion(level, flagPos, spots);
+        for (int i = 0; i < spots.size(); i++) {
+            if (paths.get(i) == null) {
+                // Repeated spots (single-point raids, cramped rings) share one search
+                int earlier = spots.subList(0, i).indexOf(spots.get(i));
+                if (earlier >= 0) {
+                    paths.set(i, paths.get(earlier));
+                    continue;
+                }
+                paths.set(i, finder.findPath(region, probe, Set.of(spots.get(i)),
+                        (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F));
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * Decimates a flag-to-spot search into waypoints and stores them as the
+     * boss's squad route. The search reads flag-to-spot, so the list is
+     * reversed into march order; null paths leave the squad on ordinary
+     * partial pathing.
+     */
+    private static void assignSquadPath(RaiderBossEntity boss, @Nullable Path path, BlockPos flagPos) {
+        if (path != null) {
+            boss.setSquadPath(SquadPathSearch.decimate(path, true), flagPos);
+        }
+    }
+
+    /**
+     * The chosen spawn spots plus the search that produced the primary one,
+     * which doubles as that group's squad route (see {@link #groupPaths}).
+     */
+    private record AnchorSelection(List<BlockPos> spots, @Nullable Path primaryPath) {
     }
 
     /**
      * The {@code count} spawn spots for the raid's groups — one per boss. The
-     * first is {@link #pickAnchor}'s cheapest reachable candidate; the rest
-     * take the candidates nearest evenly spaced angles around the flag, so
-     * groups spread radially. Each candidate hosts at most one group until
+     * first is the cheapest reachable anchor from {@link #pickAnchorPath}'s
+     * multi-target search (or a random one when nothing is reachable); the
+     * rest take the candidates nearest evenly spaced angles around the flag,
+     * so groups spread radially. Each candidate hosts at most one group until
      * they run out; after that, spots repeat (guaranteeing {@code count}
-     * spots) so a cramped ring still yields a full raid.
+     * spots) so a cramped ring still yields a full raid. With
+     * {@code raidSpawning.singleSpawnPoint} set, every group gets the primary
+     * anchor instead.
      */
-    private static List<BlockPos> pickAnchors(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance, int count) {
-        List<BlockPos> spots = new ArrayList<>();
-        BlockPos primary = pickAnchor(level, flagPos, anchors, probe, distance);
-        spots.add(primary);
+    private static AnchorSelection pickAnchors(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance, int count) {
+        List<BlockPos> spots = new ArrayList<>(count);
+        Path primaryPath = pickAnchorPath(level, flagPos, anchors, probe, distance);
+        // Reached anchor, or the best-approached one on a partial path
+        BlockPos primary = primaryPath != null
+                ? primaryPath.getTarget()
+                : anchors.get(level.getRandom().nextInt(anchors.size()));
 
+        // Single-point raids put every group on the optimal anchor
+        if (Config.RAID_SINGLE_SPAWN_POINT.get()) {
+            return new AnchorSelection(Collections.nCopies(count, primary), primaryPath);
+        }
+
+        spots.add(primary);
         Set<BlockPos> used = new HashSet<>();
         used.add(primary);
         double startAngle = Math.atan2(primary.getZ() - flagPos.getZ(), primary.getX() - flagPos.getX());
@@ -292,7 +372,7 @@ public final class RaidSpawner {
             spots.add(nearest);
             used.add(nearest);
         }
-        return spots;
+        return new AnchorSelection(spots, primaryPath);
     }
 
     /**

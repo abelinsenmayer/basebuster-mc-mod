@@ -44,6 +44,26 @@ public class Config {
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
             .defineInRange("raiderSquad.searchRadius", 48.0, 1.0, 256.0);
 
+    public static final ModConfigSpec.BooleanValue RAIDER_SQUAD_PATHING_ENABLED = BUILDER
+            .comment("Whether raider bosses plan a shared rough path to the flag for their squads")
+            .define("raiderSquad.pathingEnabled", true);
+
+    public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_PATHING_MAX_DISTANCE = BUILDER
+            .comment("Maximum flag distance a squad path search will be attempted over")
+            .defineInRange("raiderSquad.pathingMaxDistance", 256.0, 32.0, 4096.0);
+
+    public static final ModConfigSpec.IntValue RAIDER_SQUAD_PATHING_MAX_NODES = BUILDER
+            .comment("Cap on node expansions for a single squad path search")
+            .defineInRange("raiderSquad.pathingMaxNodes", 49152, 1024, 1048576);
+
+    public static final ModConfigSpec.IntValue RAIDER_SQUAD_PATHING_REFRESH_TICKS = BUILDER
+            .comment("Ticks between squad path recomputes while the stored path is still valid")
+            .defineInRange("raiderSquad.pathingRefreshTicks", 15000, 20, 20000);
+
+    public static final ModConfigSpec.BooleanValue RAID_SINGLE_SPAWN_POINT = BUILDER
+            .comment("Whether every raid group spawns together at the single most reachable point instead of spreading around the flag")
+            .define("raidSpawning.singleSpawnPoint", false);
+
     public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER
             .comment("Movement speed multiplier applied to a raider while it is fleeing")
             .defineInRange("raiderFlee.speedMultiplier", 1.3, 1.0, 10.0);

@@ -69,12 +69,22 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // Positions already proposed as synthetic nodes during this search, so a
     // cell is never emitted twice (each repeat costs a separate node expansion)
     private final Set<Long> extraEmissions = new HashSet<>();
+    // Ceiling on summed column hardness a tunnel move may cross. MAX_VALUE
+    // keeps ordinary navigation unrestricted; coarse long-range searches pass
+    // a real cap so thick fortifications price out instead of flooding the
+    // search frontier with tunnel candidates
+    private final float tunnelHardnessCap;
 
     public RaiderNodeEvaluator(Mob mob) {
+        this(mob, Float.MAX_VALUE);
+    }
+
+    public RaiderNodeEvaluator(Mob mob, float tunnelHardnessCap) {
         // prepare() normally assigns this.mob; seeding it in the ctor keeps
         // canFloat() correct even before the first pathfind (jumpInFluid
         // consults it on every submerged jump)
         this.mob = mob;
+        this.tunnelHardnessCap = tunnelHardnessCap;
     }
 
     /**
@@ -427,6 +437,10 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
 
         if (hardness <= 0.0F) {
             // Nothing solid in the way, so there is nothing to tunnel through
+            return -1.0F;
+        }
+        if (hardness > this.tunnelHardnessCap) {
+            // Too fortified for this search's tunneling appetite
             return -1.0F;
         }
 

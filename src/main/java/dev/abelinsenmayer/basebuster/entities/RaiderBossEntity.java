@@ -3,6 +3,8 @@ package dev.abelinsenmayer.basebuster.entities;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
+import dev.abelinsenmayer.basebuster.entities.goals.PlanSquadPathGoal;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -35,6 +37,12 @@ public class RaiderBossEntity extends RaiderEntity {
     private UUID raidId;
     // The banner tier the raid's last boss drops; only meaningful with a raidId
     private int raidTier = VictoryBannerBlock.MIN_TIER;
+    // Rough route to squadPathTarget planned by PlanSquadPathGoal (or assigned
+    // at raid spawn), consumed by FollowSquadPathGoal. Immutable snapshots;
+    // not persisted -- the goal re-plans after a world load
+    private List<BlockPos> squadPath = List.of();
+    @Nullable
+    private BlockPos squadPathTarget;
 
     public RaiderBossEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -44,6 +52,39 @@ public class RaiderBossEntity extends RaiderEntity {
         if (scale != null) {
             scale.setBaseValue(BOSS_SCALE);
         }
+    }
+
+    @Override
+    protected void registerGoals() {
+        super.registerGoals();
+        // Squad-route planning claims no goal flags, so it can fire alongside
+        // any other activity and completes the tick it starts
+        this.goalSelector.addGoal(2, new PlanSquadPathGoal(this));
+    }
+
+    /**
+     * The shared rough route this boss's squad marches along. Followers take
+     * the immutable list itself, so updating it never mutates a path another
+     * raider is following.
+     */
+    public List<BlockPos> getSquadPath() {
+        return this.squadPath;
+    }
+
+    /** The flag {@link #getSquadPath} leads to; null when no path is stored. */
+    @Nullable
+    public BlockPos getSquadPathTarget() {
+        return this.squadPathTarget;
+    }
+
+    public void setSquadPath(List<BlockPos> waypoints, BlockPos flagPos) {
+        this.squadPath = List.copyOf(waypoints);
+        this.squadPathTarget = flagPos.immutable();
+    }
+
+    public void clearSquadPath() {
+        this.squadPath = List.of();
+        this.squadPathTarget = null;
     }
 
     @Override

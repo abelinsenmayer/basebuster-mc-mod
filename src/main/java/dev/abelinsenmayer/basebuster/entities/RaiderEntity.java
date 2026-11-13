@@ -4,6 +4,7 @@ import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.goals.CaptureFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.FleeGoal;
+import dev.abelinsenmayer.basebuster.entities.goals.FollowSquadPathGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.JoinSquadGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.MoveToFlagGoal;
 import dev.abelinsenmayer.basebuster.entities.goals.WanderNearFlagGoal;
@@ -167,6 +168,10 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.goalSelector.addGoal(3, new JoinSquadGoal(this));
         // Capturing is the raider's highest priority after combat
         this.goalSelector.addGoal(4, new CaptureFlagGoal(this));
+        // Shares priority 4 so it can preempt MoveToFlagGoal immediately on
+        // spawn; CaptureFlagGoal is registered first and wins ties near the
+        // flag, where FollowSquadPathGoal's handoff gate keeps it idle anyway
+        this.goalSelector.addGoal(4, new FollowSquadPathGoal(this, 1.0));
         this.goalSelector.addGoal(5, new MoveToFlagGoal(this, 1.0));
         this.goalSelector.addGoal(6, new WanderNearFlagGoal(this, 1.0));
         this.goalSelector.addGoal(7, new MoveThroughVillageGoal(this, 1.0, true, 4, this::canBreakDoors));

@@ -32,7 +32,7 @@ public enum RaiderKit {
         }
     },
     /** Heavy bruiser: mace and full iron armor, extra health, hard to stagger. */
-    TANK(20.0, 0.20, false, 0.8) {
+    TANK(20.0, 0.30, false, 0.8) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             raider.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.MACE));

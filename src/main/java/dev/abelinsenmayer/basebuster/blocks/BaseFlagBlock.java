@@ -30,7 +30,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 
 public class BaseFlagBlock extends Block implements EntityBlock {
-    public static final int FLAG_PROTECTION_RADIUS = 32;
+    public static final int FLAG_PROTECTION_RADIUS = 120;
     // True once raiders capture the flag; renders as red wool instead of white
     public static final BooleanProperty CAPTURED = BooleanProperty.create("captured");
 
