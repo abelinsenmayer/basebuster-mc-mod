@@ -4,6 +4,7 @@ import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.goals.PlanSquadPathGoal;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -17,7 +18,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import javax.annotation.Nullable;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 // A beefier raider: scaled up to roughly 2.5 blocks tall. Skins come from the
@@ -30,6 +33,11 @@ public class RaiderBossEntity extends RaiderEntity {
     // A dying boss scans this far for surviving bosses from the same raid
     // before awarding the victory banner
     private static final double RAID_MATE_SEARCH_RADIUS = 128.0;
+    // Glow outline color; vanilla defaults to white for teamless entities
+    private static final int GLOW_COLOR = ChatFormatting.RED.getColor();
+    // Bosses march slower than their kit speed so squad members can reach
+    // and hold their chevron slots instead of straggling behind
+    private static final double BOSS_SPEED_FACTOR = 0.85;
 
     // Which raid this boss belongs to; null for egg/summon spawns, which are
     // not part of a raid and never drop a banner
@@ -43,6 +51,10 @@ public class RaiderBossEntity extends RaiderEntity {
     private List<BlockPos> squadPath = List.of();
     @Nullable
     private BlockPos squadPathTarget;
+    // Chevron slots handed out round-robin to squad members, keyed by member
+    // id so a raider keeps its slot across goal restarts
+    private final Map<UUID, Integer> formationSlots = new HashMap<>();
+    private int nextFormationSlot;
 
     public RaiderBossEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -87,10 +99,27 @@ public class RaiderBossEntity extends RaiderEntity {
         this.squadPathTarget = null;
     }
 
+    /**
+     * The chevron slot a squad member holds in this boss's formation. First
+     * claim assigns the next index round-robin; repeat claims (e.g. after a
+     * goal restart) return the same slot. A dead member's slot is recycled
+     * only by the modulo wrap, which is fine while squads stay smaller than
+     * the slot count.
+     */
+    public int claimFormationSlot(UUID memberId, int slotCount) {
+        return this.formationSlots.computeIfAbsent(
+                memberId, id -> this.nextFormationSlot++ % slotCount);
+    }
+
     @Override
     protected double getConfiguredMaxHealth() {
         // Bosses get a full kit like normal raiders, plus a health bonus
         return this.getKit().maxHealth() + Config.RAIDER_BOSS_BONUS_HEALTH.get();
+    }
+
+    @Override
+    protected double getConfiguredMovementSpeed() {
+        return super.getConfiguredMovementSpeed() * BOSS_SPEED_FACTOR;
     }
 
     // Checked every frame; honors live config changes without needing a
@@ -98,6 +127,14 @@ public class RaiderBossEntity extends RaiderEntity {
     @Override
     public boolean isCurrentlyGlowing() {
         return Config.RAIDER_BOSS_GLOWING.get() || super.isCurrentlyGlowing();
+    }
+
+    // Vanilla colors glow outlines by scoreboard team, defaulting to white
+    // when the entity has none. Red marks bosses without putting them on a
+    // team; an explicit team assignment still wins over the default
+    @Override
+    public int getTeamColor() {
+        return this.getTeam() == null ? GLOW_COLOR : super.getTeamColor();
     }
 
     @Override

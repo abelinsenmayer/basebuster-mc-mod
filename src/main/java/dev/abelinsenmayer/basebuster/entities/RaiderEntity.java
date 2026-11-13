@@ -314,7 +314,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         }
         AttributeInstance moveSpeed = this.getAttribute(Attributes.MOVEMENT_SPEED);
         if (moveSpeed != null) {
-            moveSpeed.setBaseValue(this.getKit().movementSpeed());
+            moveSpeed.setBaseValue(this.getConfiguredMovementSpeed());
         }
         // Knockback resistance is kit-level too (e.g. tanks shrug off hits)
         AttributeInstance knockbackResist = this.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
@@ -333,6 +333,11 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // Max health this raider spawns with; subclasses (e.g. bosses) can override.
     protected double getConfiguredMaxHealth() {
         return this.getKit().maxHealth();
+    }
+
+    // Movement speed this raider spawns with; subclasses (e.g. bosses) can override.
+    protected double getConfiguredMovementSpeed() {
+        return this.getKit().movementSpeed();
     }
 
     /** Whether the raider currently fights at range: ranged kit + weapon in hand. */
