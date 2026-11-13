@@ -145,6 +145,9 @@ public class BaseFlagBlock extends Block implements EntityBlock {
                 return ItemInteractionResult.CONSUME;
             }
             if (RaidSpawner.startRaid((ServerLevel) level, pos)) {
+                player.displayClientMessage(
+                        Component.literal("A level " + RaidSpawner.raidTier((ServerLevel) level, pos) + " raid has begun!"),
+                        false);
                 if (!player.hasInfiniteMaterials()) {
                     stack.shrink(1);
                 }

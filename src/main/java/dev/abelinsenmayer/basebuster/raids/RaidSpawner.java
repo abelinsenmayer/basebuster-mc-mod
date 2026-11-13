@@ -191,7 +191,7 @@ public final class RaidSpawner {
      * without a {@link BaseFlagBlockEntity} get a level-1 raid; levels beyond
      * the table clamp to the last row.
      */
-    private static int raidTier(ServerLevel level, BlockPos flagPos) {
+    public static int raidTier(ServerLevel level, BlockPos flagPos) {
         int baseLevel = 1;
         if (level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity) {
             baseLevel = flagEntity.getBaseLevel();
