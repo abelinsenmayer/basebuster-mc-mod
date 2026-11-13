@@ -456,10 +456,17 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         }
     }
 
-    // ABE TODO remove this when done debugging
+    // Checked every frame; honors live config changes without needing a
+    // potion effect that would linger in saved NBT if the config is later disabled
     @Override
     public boolean isCurrentlyGlowing() {
-        return Config.RAIDER_BOSS_GLOWING.get() || super.isCurrentlyGlowing();
+        return this.glowsByConfig() || super.isCurrentlyGlowing();
+    }
+
+    // The config flag granting perpetual glow; subclasses (e.g. bosses)
+    // override to read their own key so the toggles stay independent
+    protected boolean glowsByConfig() {
+        return Config.RAIDER_GLOWING.get();
     }
 
     /**

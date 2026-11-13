@@ -122,11 +122,11 @@ public class RaiderBossEntity extends RaiderEntity {
         return super.getConfiguredMovementSpeed() * BOSS_SPEED_FACTOR;
     }
 
-    // Checked every frame; honors live config changes without needing a
-    // potion effect that would linger in saved NBT if the config is later disabled
+    // Bosses read their own glow key rather than the regular-raider one, so
+    // the two can be toggled independently
     @Override
-    public boolean isCurrentlyGlowing() {
-        return Config.RAIDER_BOSS_GLOWING.get() || super.isCurrentlyGlowing();
+    protected boolean glowsByConfig() {
+        return Config.RAIDER_BOSS_GLOWING.get();
     }
 
     // Vanilla colors glow outlines by scoreboard team, defaulting to white
