@@ -273,6 +273,12 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         int nextIndex = path.getNextNodeIndex();
         Node next = path.getNode(nextIndex);
         BlockPos mobFeet = this.mob.blockPosition();
+        // Node Y is emitted at floor(getY + 0.5) (WalkNodeEvaluator.getStart):
+        // on partial-height floors (slabs, farmland, paths) that is one cell
+        // above blockPosition(), so comparing next.y to mobFeet.getY() would
+        // read the path's own start node as a pillar climb. Compare in node
+        // coordinates instead -- the same rounding the evaluator uses.
+        int mobNodeY = Mth.floor(this.mob.getY() + 0.5);
 
         // Descent: the next node sits inside the scaffold/climbable column
         // directly underfoot. Scaffolding's collision shape only yields while
@@ -282,7 +288,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
         // lowers it down the column at vanilla's -0.15 blocks/tick with fall
         // distance reset, and the bottom cell's plate (which still collides
         // while descending) catches it at the base.
-        boolean descending = next.y < mobFeet.getY();
+        boolean descending = next.y < mobNodeY;
         this.mob.setShiftKeyDown(descending);
         if (descending) {
             return;
@@ -290,7 +296,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
 
         // Pillar ascent: the next node is directly overhead in the mob's column,
         // reachable only by climbing a scaffold stack built in place
-        if (next.x == mobFeet.getX() && next.z == mobFeet.getZ() && next.y > mobFeet.getY()) {
+        if (next.x == mobFeet.getX() && next.z == mobFeet.getZ() && next.y > mobNodeY) {
             // The anchor scaffold goes wherever the mob's body is: the feet
             // cell on solid ground, or the head cell when the feet cell is the
             // partial-height block (slab, dirt path, farmland) the mob is

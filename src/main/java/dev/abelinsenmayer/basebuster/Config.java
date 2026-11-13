@@ -62,7 +62,7 @@ public class Config {
 
     public static final ModConfigSpec.BooleanValue RAID_SINGLE_SPAWN_POINT = BUILDER
             .comment("Whether every raid group spawns together at the single most reachable point instead of spreading around the flag")
-            .define("raidSpawning.singleSpawnPoint", false);
+            .define("raidSpawning.singleSpawnPoint", true);
 
     public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER
             .comment("Movement speed multiplier applied to a raider while it is fleeing")
