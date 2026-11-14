@@ -363,17 +363,17 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     }
 
     /**
-     * Whether a scaffold could be placed at (x, y, z): empty space, a
-     * replaceable block, or a water cell the scaffold can occupy waterlogged
-     * (letting raiders pillar up through waterfalls and bridge across water).
-     * Lava is never a scaffold target.
+     * Whether a scaffold could be placed at (x, y, z): empty space or a
+     * replaceable block, but never a fluid cell -- raiders must swim or
+     * bottom-walk through water rather than scaffold over it. Lava was
+     * already excluded by the fluid check.
      */
     private boolean isReplaceableForScaffold(int x, int y, int z) {
         BlockState state = this.currentContext.getBlockState(new BlockPos(x, y, z));
-        if (state.getFluidState().is(FluidTags.WATER)) {
-            return true;
+        if (!state.getFluidState().isEmpty()) {
+            return false;
         }
-        return state.isAir() || (state.canBeReplaced() && state.getFluidState().isEmpty());
+        return state.isAir() || state.canBeReplaced();
     }
 
     /**

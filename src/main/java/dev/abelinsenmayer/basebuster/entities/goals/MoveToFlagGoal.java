@@ -333,12 +333,13 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             BlockPos below = pos.below();
             BlockState belowState = level.getBlockState(below);
             FluidState belowFluid = belowState.getFluidState();
-            // Water cells accept a scaffold too (it displaces the water), so
-            // a walkway node over water is bridgeable as well
+            // The evaluator never plans bridge nodes over water, and the goal
+            // doesn't lay scaffolds into fluid cells either -- the mob swims
+            // or walks the bottom across water instead
             if (this.isTraversable(level, pos)
                     && !(belowState.getBlock() instanceof ScaffoldingBlock)
-                    && (belowFluid.is(FluidTags.WATER)
-                        || (belowFluid.isEmpty() && (belowState.isAir() || belowState.canBeReplaced())))
+                    && belowFluid.isEmpty()
+                    && (belowState.isAir() || belowState.canBeReplaced())
                     && !this.pathDescendsInto(path, i, below)) {
                 this.ensureScaffolding(level, below);
             }
@@ -399,6 +400,12 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
      * a replaceable block, or a water cell (the scaffold displaces the water).
      * Occupied cells and lava are left alone. Support distance doesn't matter
      * -- raider scaffolding has no stability limit and never collapses.
+     *
+     * <p>Water acceptance is a placement capability, not a planning one: the
+     * evaluator never charts scaffold routes through water, but placements
+     * the path did call for still succeed when the target cell holds water
+     * (a pillar anchor while the mob stands in a pool, a cell that flooded
+     * after the path was planned).
      */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
