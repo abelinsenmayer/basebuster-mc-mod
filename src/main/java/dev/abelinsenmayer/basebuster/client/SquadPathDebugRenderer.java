@@ -1,15 +1,20 @@
 package dev.abelinsenmayer.basebuster.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -51,24 +56,59 @@ public final class SquadPathDebugRenderer {
 
         Vec3 cameraPos = event.getCamera().getPosition();
         PoseStack poseStack = event.getPoseStack();
-        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
-        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+        // BufferBuilder instead of a RenderType buffer: RenderType.lines()'
+        // composite state forces depth testing back on during endBatch, which
+        // would defeat the through-wall draw in drawThroughWorld
+        BufferBuilder lines = Tesselator.getInstance()
+                .begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
 
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
-        // Draw through walls: the overlay exists to reveal the planned route
-        // even when terrain or the base occludes it
-        RenderSystem.disableDepthTest();
         for (Entity entity : level.entitiesForRendering()) {
             if (entity instanceof RaiderBossEntity boss) {
                 drawSquadPath(poseStack, lines, boss);
             }
         }
-        buffers.endBatch(RenderType.lines());
-        RenderSystem.enableDepthTest();
 
         poseStack.popPose();
+
+        MeshData mesh = lines.build();
+        if (mesh != null) {
+            drawThroughWorld(mesh);
+        }
+    }
+
+    // Submits the line mesh straight to the lines shader so no RenderType
+    // composite state can override the GL state set here. Depth test stays
+    // off (visible through terrain and the water surface) and fog is
+    // neutralized for the draw -- the rendertype_lines fragment shader runs
+    // linear_fog, and underwater fog would otherwise erase the overlay a few
+    // dozen blocks out.
+    private static void drawThroughWorld(MeshData mesh) {
+        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableCull();
+        RenderSystem.disableDepthTest();
+
+        float fogStart = RenderSystem.getShaderFogStart();
+        float fogEnd = RenderSystem.getShaderFogEnd();
+        RenderSystem.setShaderFogStart(1.0E30F);
+        RenderSystem.setShaderFogEnd(Float.MAX_VALUE);
+
+        // The model-view already holds the camera rotation for this stage and
+        // the PoseStack only baked the -cameraPos translation into vertices,
+        // so no matrix setup is needed -- touching the stack would strip the
+        // rotation and unanchor the lines from the world
+        BufferUploader.drawWithShader(mesh);
+
+        RenderSystem.setShaderFogStart(fogStart);
+        RenderSystem.setShaderFogEnd(fogEnd);
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
     }
 
     private static void drawSquadPath(PoseStack poseStack, VertexConsumer lines, RaiderBossEntity boss) {

@@ -82,7 +82,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     private final int maxAerialHeight;
     // Summed column hardness a coarse search tunnels through, ~2-3 blocks of
     // stone; thicker fortifications price out of the search space entirely
-    private static final float COARSE_TUNNEL_HARDNESS_CAP = 4.0F;
+    private static final float COARSE_TUNNEL_HARDNESS_CAP = 40.0F;
 
     public RaiderNodeEvaluator(Mob mob) {
         this(mob, Float.MAX_VALUE, Integer.MAX_VALUE);
