@@ -85,16 +85,26 @@ public final class SquadPathSearch {
         }
 
         int distance = mob.blockPosition().distManhattan(flag);
-        int budget = (int) Math.min(
-                (long) distance * NODES_PER_BLOCK,
-                Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
         RaiderNodeEvaluator evaluator = RaiderNodeEvaluator.coarse(mob);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
-        PathFinder finder = new PathFinder(evaluator, budget);
+        PathFinder finder = new PathFinder(evaluator, nodeBudget(distance));
         PathNavigationRegion region = regionAround(level, mob.blockPosition(), flag);
         return finder.findPath(region, mob, Set.of(flag),
                 (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, SEARCH_DEPTH_MULTIPLIER);
+    }
+
+    /**
+     * The node-expansion budget for one bounded long-range search over
+     * {@code distance} blocks: expansions scale with distance and clamp at
+     * {@link Config#RAIDER_SQUAD_PATHING_MAX_NODES}. Shared by squad route
+     * planning and the raid spawn searches so every coarse search buys the
+     * same reach per block.
+     */
+    public static int nodeBudget(int distance) {
+        return (int) Math.min(
+                (long) distance * NODES_PER_BLOCK,
+                Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
     }
 
     /**

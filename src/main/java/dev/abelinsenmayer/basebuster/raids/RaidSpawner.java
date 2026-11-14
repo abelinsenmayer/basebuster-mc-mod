@@ -69,8 +69,9 @@ import java.util.UUID;
  *   squad's shared rough route (see {@link SquadPathSearch}).
  * </ol>
  *
- * <p>The search is synchronous and bounded by {@link #PATH_NODE_BUDGET}, so it
- * runs once per raid trigger rather than per tick.
+ * <p>The search is synchronous and bounded by {@link SquadPathSearch#nodeBudget},
+ * the same distance-scaled cap squad route planning uses, so it runs once per
+ * raid trigger rather than per tick.
  */
 public final class RaidSpawner {
     // Randomized buffer added to the protection radius, per the raid spec
@@ -78,8 +79,6 @@ public final class RaidSpawner {
     private static final int MAX_SPAWN_BUFFER = 40;
     // Direction samples around the ring; more = better coverage of "nearest area"
     private static final int RING_CANDIDATES = 16;
-    // Node expansion budget for the spawn-point search
-    private static final int PATH_NODE_BUDGET = 8192;
     // Manhattan distance from a candidate at which the path counts as reached
     private static final int TARGET_ACCURACY = 3;
     // Water malus applied to the probe during spawn-time searches only: vanilla
@@ -159,7 +158,7 @@ public final class RaidSpawner {
         try {
             // One spawn spot per boss, spread radially around the flag when the
             // candidate terrain allows it
-            selection = pickAnchors(level, flagPos, anchors, boss, distance, composition[0]);
+            selection = pickAnchors(level, flagPos, anchors, boss, distance, Config.RAID_SINGLE_SPAWN_POINT.get() ? 1 :composition[0]);
             // One rough route per group spot, all searched while the probe still
             // stands at the flag so every path starts there
             groupPaths = groupPaths(level, flagPos, selection.spots(), boss, distance, selection.primaryPath());
@@ -296,7 +295,7 @@ public final class RaidSpawner {
      */
     @Nullable
     private static Path pickAnchorPath(ServerLevel level, BlockPos flagPos, List<BlockPos> anchors, Mob probe, int distance) {
-        PathFinder finder = newFlagPathFinder(probe, PATH_NODE_BUDGET);
+        PathFinder finder = newFlagPathFinder(probe, SquadPathSearch.nodeBudget(distance));
         PathNavigationRegion region = flagRegion(level, flagPos, anchors);
         return finder.findPath(region, probe, Set.copyOf(anchors),
                 (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
@@ -317,7 +316,7 @@ public final class RaidSpawner {
         if (primaryPath != null) {
             paths.set(0, primaryPath);
         }
-        PathFinder finder = newFlagPathFinder(probe, PATH_NODE_BUDGET);
+        PathFinder finder = newFlagPathFinder(probe, SquadPathSearch.nodeBudget(distance));
         PathNavigationRegion region = flagRegion(level, flagPos, spots);
         for (int i = 0; i < spots.size(); i++) {
             if (paths.get(i) == null) {
