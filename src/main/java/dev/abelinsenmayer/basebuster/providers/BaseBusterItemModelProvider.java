@@ -20,6 +20,8 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
         handheldWithTexture(BaseBuster.DIAMOND_REPAIR_HAMMER, "item/diamond_shovel");
         withExistingParent(BaseBuster.RAIDER_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
         withExistingParent(BaseBuster.RAIDER_BOSS_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
+        // Test tool disguised as rotten flesh
+        withExistingParent(BaseBuster.RAID_SPAWNER.getId().toString(), mcLoc("item/rotten_flesh"));
         // Banner items render through BlockEntityWithoutLevelRenderer; vanilla's
         // template_banner wraps builtin/entity with the display transforms that
         // keep the model inside inventory slots and hands

@@ -44,9 +44,9 @@ import java.util.Set;
  */
 public final class SquadPathSearch {
     // Padding around the start/target bounding box for the search region
-    private static final int REGION_PADDING = 16;
+    private static final int REGION_PADDING = 32;
     // Cap on path length and distance from the start, generous for detours
-    private static final float MAX_RANGE_MULTIPLIER = 4.0F;
+    private static final float MAX_RANGE_MULTIPLIER = 100000000.0F;
     // Every Nth path node becomes a waypoint handed to squad members
     private static final int WAYPOINT_STRIDE = 10;
     // Below this distance normal navigation reaches the flag on its own

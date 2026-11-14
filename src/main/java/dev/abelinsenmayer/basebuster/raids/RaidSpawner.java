@@ -113,34 +113,102 @@ public final class RaidSpawner {
     }
 
     /**
-     * Attempts to start a raid on the flag at {@code flagPos}.
+     * Attempts to start a raid on the flag at {@code flagPos}, placing the
+     * party at the cheapest reachable point on the outer spawn ring.
      *
      * @return whether the raid was spawned
      */
     public static boolean startRaid(ServerLevel level, BlockPos flagPos) {
+        // Probe with the boss: it's the largest member, so routes and spawn
+        // spots that fit the boss fit everyone
+        RaiderBossEntity boss = newPartyProbe(level, flagPos);
+        if (boss == null) {
+            return false;
+        }
+        RandomSource random = level.getRandom();
+        int distance = BaseFlagBlock.FLAG_PROTECTION_RADIUS + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
+        List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
+        if (anchors.isEmpty()) {
+            return false;
+        }
+        int groupCount = Config.RAID_SINGLE_SPAWN_POINT.get()
+                ? 1
+                : RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
+        return spawnParty(level, flagPos, boss, anchors, distance, groupCount);
+    }
+
+    /**
+     * Testing variant of {@link #startRaid}: spawns the party at
+     * {@code spawnPos} (snapped a couple blocks for safety) rather than
+     * picking a point on the spawn ring. A single anchor means every group
+     * shares the clicked spot, matching the effect of
+     * {@code raidSpawning.singleSpawnPoint}.
+     *
+     * @return whether the raid was spawned
+     */
+    public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos) {
+        RaiderBossEntity boss = newPartyProbe(level, flagPos);
+        if (boss == null) {
+            return false;
+        }
+        BlockPos anchor = safeSpawnNear(level, spawnPos, boss);
+        if (anchor == null) {
+            return false;
+        }
+        int distance = Math.max(flagPos.distManhattan(anchor), 1);
+        int groupCount = RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
+        return spawnParty(level, flagPos, boss, List.of(anchor), distance, groupCount);
+    }
+
+    /**
+     * A boss stood at the flag, used to probe spawn safety and as the start
+     * of every flag-to-spot search; the probe itself spawns as the first
+     * group's boss.
+     */
+    @Nullable
+    private static RaiderBossEntity newPartyProbe(ServerLevel level, BlockPos flagPos) {
+        RaiderBossEntity probe = BaseBuster.RAIDER_BOSS.get().create(level);
+        if (probe == null) {
+            return null;
+        }
+        probe.moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
+        // Every spawned raider wears the generic zombie skin for now; restore
+        // a per-raid RaiderSkinTheme draw when varied skins come back
+        probe.setSkin(RaiderSkin.ZOMBIE);
+        return probe;
+    }
+
+    /**
+     * The nearest safe spot to {@code pos} within {@link #SURFACE_Y_OFFSETS},
+     * or null when none is. Unlike {@link #surfaceAnchors} this stays at the
+     * given column rather than snapping to the heightmap, so clicked-point
+     * raids land where the click happened even underground.
+     */
+    @Nullable
+    private static BlockPos safeSpawnNear(ServerLevel level, BlockPos pos, Mob probe) {
+        for (int dy : SURFACE_Y_OFFSETS) {
+            BlockPos feet = pos.above(dy);
+            if (isSafeSpawn(level, probe, feet)) {
+                return feet.immutable();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Spawns the party itself: one group spot per boss picked out of
+     * {@code anchors} ({@link #pickAnchors} repeats them when there are too
+     * few), a rough flag-to-spot route per group, members scattered around
+     * the spots, and horns. {@code distance} sizes the search budget and
+     * range for those routes.
+     */
+    private static boolean spawnParty(ServerLevel level, BlockPos flagPos, RaiderBossEntity boss, List<BlockPos> anchors, int distance, int groupCount) {
         RandomSource random = level.getRandom();
         int raidTier = raidTier(level, flagPos);
         int[] composition = RAID_COMPOSITION[raidTier - 1];
         int partySize = Arrays.stream(composition).sum();
         // Large parties scatter wider so the anchor area can hold them all
         int spreadRadius = Math.max(MEMBER_SPREAD_RADIUS, (int) Math.ceil(Math.sqrt(partySize)));
-
-        // Probe with the boss: it's the largest member, so routes and spawn
-        // spots that fit the boss fit everyone
-        RaiderBossEntity boss = BaseBuster.RAIDER_BOSS.get().create(level);
-        if (boss == null) {
-            return false;
-        }
-        boss.moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
-        // Every spawned raider wears the generic zombie skin for now; restore
-        // a per-raid RaiderSkinTheme draw when varied skins come back
-        boss.setSkin(RaiderSkin.ZOMBIE);
-
-        int distance = BaseFlagBlock.FLAG_PROTECTION_RADIUS + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
-        List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
-        if (anchors.isEmpty()) {
-            return false;
-        }
 
         // One id per raid, shared by every boss it spawns, so a dying boss can
         // tell when it's the last one standing
@@ -158,7 +226,7 @@ public final class RaidSpawner {
         try {
             // One spawn spot per boss, spread radially around the flag when the
             // candidate terrain allows it
-            selection = pickAnchors(level, flagPos, anchors, boss, distance, Config.RAID_SINGLE_SPAWN_POINT.get() ? 1 :composition[0]);
+            selection = pickAnchors(level, flagPos, anchors, boss, distance, groupCount);
             // One rough route per group spot, all searched while the probe still
             // stands at the flag so every path starts there
             groupPaths = groupPaths(level, flagPos, selection.spots(), boss, distance, selection.primaryPath());

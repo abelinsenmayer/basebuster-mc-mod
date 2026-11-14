@@ -9,6 +9,7 @@ import dev.abelinsenmayer.basebuster.blocks.VictoryWallBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
+import dev.abelinsenmayer.basebuster.items.RaidSpawnerItem;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterBlockStateProvider;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterItemModelProvider;
@@ -95,6 +96,10 @@ public class BaseBuster {
     public static final DeferredItem<RepairHammerItem> IRON_REPAIR_HAMMER = ITEMS.register("iron_repair_hammer", () -> new RepairHammerItem(Tiers.IRON, new Item.Properties()));
     public static final DeferredItem<RepairHammerItem> DIAMOND_REPAIR_HAMMER = ITEMS.register("diamond_repair_hammer", () -> new RepairHammerItem(Tiers.DIAMOND, new Item.Properties()));
 
+    // Test tool disguised as rotten flesh: right-clicking a block raids the
+    // nearest player-owned flag, spawning the party at the clicked spot
+    public static final DeferredItem<RaidSpawnerItem> RAID_SPAWNER = ITEMS.register("raid_spawner", () -> new RaidSpawnerItem(new Item.Properties()));
+
     // Victory banners: each tier is a standing block plus its wall-mounted
     // counterpart, sharing a single BannerItem that places whichever applies
     public static final DeferredBlock<VictoryBannerBlock> VICTORY_BANNER_TIER1 = BLOCKS.register("victory_banner_tier1", () -> new VictoryBannerBlock(1, bannerProperties()));
@@ -166,6 +171,7 @@ public class BaseBuster {
                 output.accept(DIAMOND_REPAIR_HAMMER.get());
                 output.accept(RAIDER_SPAWN_EGG.get());
                 output.accept(RAIDER_BOSS_SPAWN_EGG.get());
+                output.accept(RAID_SPAWNER.get());
                 output.accept(VICTORY_BANNER_TIER1_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER2_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER3_ITEM.get());
