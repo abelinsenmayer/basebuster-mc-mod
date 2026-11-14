@@ -57,7 +57,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 10.0F;
+    private static final float BRIDGE_MALUS = 40.0F;
     // One level of a scaffold pillar the mob has to build and climb
     private static final float PILLAR_MALUS = 10.0F;
     // Digging straight down is priced below horizontal tunneling: it makes
@@ -82,7 +82,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     private final int maxAerialHeight;
     // Summed column hardness a coarse search tunnels through, ~2-3 blocks of
     // stone; thicker fortifications price out of the search space entirely
-    private static final float COARSE_TUNNEL_HARDNESS_CAP = 40.0F;
+    private static final float COARSE_TUNNEL_HARDNESS_CAP = 10000000000.0F;
 
     public RaiderNodeEvaluator(Mob mob) {
         this(mob, Float.MAX_VALUE, Integer.MAX_VALUE);
@@ -136,10 +136,11 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     public int getNeighbors(Node[] outputArray, Node node) {
         int count = super.getNeighbors(outputArray, node);
 
-        // Scaffold, climb, and door-open moves are emitted unconditionally;
-        // RAIDER_TUNNELING_ENABLED gates only the dig-through-blocks moves:
-        // emitHorizontalNeighbor -> tunnelMalus and emitVerticalNeighbors ->
-        // digDownMalus
+        // Scaffold, climb, and door-open moves are emitted unconditionally.
+        // Config toggles gate only the world-changing moves:
+        // RAIDER_TUNNELING_ENABLED -> tunnelMalus and digDownMalus, and
+        // RAIDER_SCAFFOLDING_ENABLED -> the PILLAR_MALUS and BRIDGE_MALUS
+        // emissions that require placing new scaffolding
         count = this.emitVerticalNeighbors(outputArray, count, node);
         for (Direction direction : Direction.Plane.HORIZONTAL) {
             // PathFinder allocates a fixed 32-slot neighbor array
@@ -188,7 +189,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             // Ceiling hatch (e.g. atop a ladder): opens on approach, then the
             // mob climbs through it
             count = this.emitNode(outputArray, count, x, y + 1, z, CLIMBABLE_MALUS);
-        } else if (this.isReplaceableForScaffold(x, y + 1, z)
+        } else if (this.scaffoldingEnabled()
+                && this.isReplaceableForScaffold(x, y + 1, z)
                 && this.isReplaceableForScaffold(x, y + 2, z)
                 && this.isNearSupport(x, y + 1, z)) {
             count = this.emitNode(outputArray, count, x, y + 1, z, PILLAR_MALUS);
@@ -218,7 +220,8 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             if (this.isScaffolding(x, y - 1, z)) {
                 return this.emitNode(outputArray, count, x, y, z, SCAFFOLD_MALUS);
             }
-            if (this.isReplaceableForScaffold(x, y - 1, z)
+            if (this.scaffoldingEnabled()
+                    && this.isReplaceableForScaffold(x, y - 1, z)
                     && this.isNearSupport(x, y, z)) {
                 return this.emitNode(outputArray, count, x, y, z, BRIDGE_MALUS);
             }
@@ -348,6 +351,15 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
             }
         }
         return 0.0F;
+    }
+
+    /**
+     * Whether raiders may place new scaffolding: a config toggle covering both
+     * synthetic moves that need it (bridging and pillaring). Traversing
+     * existing scaffolding and climbables stays legal either way.
+     */
+    private boolean scaffoldingEnabled() {
+        return Config.RAIDER_SCAFFOLDING_ENABLED.get();
     }
 
     private boolean isScaffolding(int x, int y, int z) {

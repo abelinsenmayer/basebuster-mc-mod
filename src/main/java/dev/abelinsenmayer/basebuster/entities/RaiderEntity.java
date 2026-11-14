@@ -113,8 +113,8 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         // almost always cheaper than skirting lava. DAMAGE_FIRE (standing on
         // magma/in fire) rises to match; synthetic tunnel/bridge nodes pay the
         // same floor via RaiderNodeEvaluator's lava-proximity check.
-        this.setPathfindingMalus(PathType.DANGER_FIRE, 50.0F);
-        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 100.0F);
+        this.setPathfindingMalus(PathType.DANGER_FIRE, 10.0F);
+        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 40.0F);
     }
 
     @Override

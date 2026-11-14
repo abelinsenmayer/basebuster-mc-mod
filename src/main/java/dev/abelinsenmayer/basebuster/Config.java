@@ -32,6 +32,10 @@ public class Config {
             .comment("Whether raiders may plan paths through breakable blocks and dig through them")
             .define("raiderTunneling.enabled", true);
 
+    public static final ModConfigSpec.BooleanValue RAIDER_SCAFFOLDING_ENABLED = BUILDER
+            .comment("Whether raiders may plan paths that place new scaffolding to bridge gaps and pillar upward")
+            .define("raiderScaffolding.enabled", true);
+
     public static final ModConfigSpec.DoubleValue RAIDER_BOSS_BONUS_HEALTH = BUILDER
             .comment("Extra health a raider boss gets on top of its kit's max health")
             .defineInRange("raiderBoss.bonusHealth", 20.0, 0.0, 1024.0);
