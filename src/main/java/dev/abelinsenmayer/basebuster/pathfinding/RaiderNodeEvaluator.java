@@ -58,7 +58,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     // to BLOCKED, so without this raiders dig through the ladder and its wall
     private static final float CLIMBABLE_MALUS = 1.0F;
     // A walkway node over a gap that needs a scaffold placed below it
-    private static final float BRIDGE_MALUS = 40.0F;
+    private static final float BRIDGE_MALUS = 20.0F;
     // One level of a scaffold pillar the mob has to build and climb
     private static final float PILLAR_MALUS = 10.0F;
     // Digging straight down is priced below horizontal tunneling: it makes
@@ -222,7 +222,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
                 return this.emitNode(outputArray, count, x, y, z, SCAFFOLD_MALUS);
             }
             if (this.scaffoldingEnabled()
-                    && this.isReplaceableForScaffold(x, y - 1, z)
+                    && this.isReplaceableForScaffold(x, y - 1, z, false)
                     && this.isNearSupport(x, y, z)) {
                 return this.emitNode(outputArray, count, x, y, z, BRIDGE_MALUS);
             }
@@ -376,17 +376,26 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     }
 
     /**
-     * Whether a scaffold could be placed at (x, y, z): empty space, a
-     * replaceable block, or a water cell -- a placed scaffold displaces the
-     * water rather than waterlogging. Other fluids (lava included) reject it.
+     * Whether a scaffold could be placed at (x, y, z): empty space or a
+     * replaceable block. Water cells count only when {@code allowWater} is
+     * set -- a placed scaffold displaces water rather than waterlogging, so
+     * pillars may rise through it, but a bridge support sunk in water is not
+     * a legal pathing move. Other fluids (lava included) always reject it.
      */
     private boolean isReplaceableForScaffold(int x, int y, int z) {
+        return this.isReplaceableForScaffold(x, y, z, true);
+    }
+
+    private boolean isReplaceableForScaffold(int x, int y, int z, boolean allowWater) {
         BlockState state = this.currentContext.getBlockState(new BlockPos(x, y, z));
         FluidState fluid = state.getFluidState();
-        if (!fluid.isEmpty() && !fluid.is(FluidTags.WATER)) {
+        if (fluid.is(FluidTags.WATER)) {
+            return allowWater;
+        }
+        if (!fluid.isEmpty()) {
             return false;
         }
-        return state.isAir() || state.canBeReplaced() || fluid.is(FluidTags.WATER);
+        return state.isAir() || state.canBeReplaced();
     }
 
     /**
