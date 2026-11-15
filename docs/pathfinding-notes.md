@@ -66,6 +66,29 @@ Injection point: `PathNavigation#createPathFinder` / `createNodeEvaluator`, or b
 - `setCanBreakDoors` also flips `GroundPathNavigation.setCanOpenDoors` — vanilla's
   own "retune the graph + add execution goal" pattern. Mirror this for digging.
 
+## Resuming a search across ticks (`ResumablePathSearch`)
+
+`PathFinder.findPath` can't be paused — its expansion counter and reached-target
+set are locals. But every piece of state the loop needs is reachable, so
+`ResumablePathSearch` re-implements the same loop as a steppable state machine:
+
+- **Frontier**: the `BinaryHeap openSet` — just keep the instance between steps.
+- **G-score/closed table**: lives in `NodeEvaluator.nodes`, which persists as long
+  as `done()` is deferred until the search finishes (`done()` nulls the context
+  `getNeighbors` reads). `RaiderNodeEvaluator.extraEmissions` likewise survives
+  since it's only cleared by `prepare()`.
+- **Partial-path tracking**: `Target.bestNode` accumulates inside the `Target`
+  objects across steps via `updateBest`.
+- **World reads**: `PathNavigationRegion` snapshots its `ChunkAccess[][]` at
+  construction — chunk unloads mid-search can't crash it (worst case: stale
+  blocks on an already-snapshotted chunk object).
+
+`PathSearchScheduler` steps the queue each `ServerTickEvent.Post` under a
+millisecond budget (`raidPathing.msPerTick`), round-robin so queued searches
+don't starve. Per-tick cost is bounded; total CPU is unchanged — path delivery
+is later in wall-clock time, which is fine for raid spawn and squad refresh
+searches that have no same-tick deadline.
+
 ## Reading order
 
 `Node`, `Path`, `Target`, `BinaryHeap` → `NodeEvaluator` → `WalkNodeEvaluator`

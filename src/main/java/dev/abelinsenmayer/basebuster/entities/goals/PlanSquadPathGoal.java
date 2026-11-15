@@ -2,11 +2,12 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
+import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
+import dev.abelinsenmayer.basebuster.pathfinding.ResumablePathSearch;
 import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.level.pathfinder.Path;
 
 import javax.annotation.Nullable;
 
@@ -18,10 +19,15 @@ import javax.annotation.Nullable;
  * <p>The search is the expensive kind ordinary navigation can't afford per
  * raider, so {@link SquadPathSearch} bounds it by distance band, loaded-chunk
  * coverage, and node budget, and this goal fires it only when the stored path
- * is missing/stale or the refresh cooldown has elapsed. It declares no
- * {@link Goal.Flag}s, so it can run alongside whatever the boss is doing and
- * completes the same tick it starts -- the same pattern as
- * {@link JoinSquadGoal}.
+ * is missing/stale or the refresh cooldown has elapsed. The search itself is
+ * stepped across later ticks by {@link PathSearchScheduler}, so the goal only
+ * submits work; it declares no {@link Goal.Flag}s and returns to idle while
+ * the search runs -- the same pattern as {@link JoinSquadGoal}.
+ *
+ * <p><b>Currently dormant</b>: not registered in
+ * {@link RaiderBossEntity#registerGoals} -- squad routes are assigned at raid
+ * spawn only and bosses never re-plan on their own. Kept for the planned
+ * world-load re-plan case.
  */
 public class PlanSquadPathGoal extends Goal {
     // Random spread on the refresh interval so multi-boss raids don't run
@@ -32,6 +38,10 @@ public class PlanSquadPathGoal extends Goal {
     private int cooldown;
     @Nullable
     private BlockPos plannedFor;
+    // Guards canUse while a scheduled search is still running; cleared by its
+    // completion callback (never on cancellation, but a cancelled search means
+    // the boss is gone anyway)
+    private boolean searchPending;
 
     public PlanSquadPathGoal(RaiderBossEntity boss) {
         this.boss = boss;
@@ -40,7 +50,8 @@ public class PlanSquadPathGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!Config.RAIDER_SQUAD_PATHING_ENABLED.get()
-                || !(this.boss.level() instanceof ServerLevel)) {
+                || !(this.boss.level() instanceof ServerLevel)
+                || this.searchPending) {
             return false;
         }
         BlockPos flag = this.boss.nearestUncapturedFlag();
@@ -60,7 +71,7 @@ public class PlanSquadPathGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        // start() ran the whole search; nothing to sustain
+        // start() submitted the search; the scheduler finishes it over later ticks
         return false;
     }
 
@@ -71,13 +82,25 @@ public class PlanSquadPathGoal extends Goal {
         if (flag == null) {
             return;
         }
-        Path path = SquadPathSearch.searchToFlag(this.boss, flag);
-        if (path != null) {
-            this.boss.setSquadPath(SquadPathSearch.decimate(path, false), flag);
-        } else if (!flag.equals(this.boss.getSquadPathTarget())) {
-            // The retargeted flag got no path: drop waypoints that would march
-            // the squad toward a different flag
-            this.boss.clearSquadPath();
+        ResumablePathSearch search = SquadPathSearch.beginSearchToFlag(this.boss, flag);
+        if (search == null) {
+            // Guardrails rejected the search outright
+            if (!flag.equals(this.boss.getSquadPathTarget())) {
+                // The retargeted flag got no path: drop waypoints that would
+                // march the squad toward a different flag
+                this.boss.clearSquadPath();
+            }
+            return;
         }
+        this.searchPending = true;
+        PathSearchScheduler.schedule(search, "squad path to flag " + flag, this.boss::isAlive, path -> {
+            this.searchPending = false;
+            if (path != null && flag.equals(this.boss.nearestUncapturedFlag())) {
+                this.boss.setSquadPath(SquadPathSearch.decimate(path, false), flag);
+            } else if (path == null && !flag.equals(this.boss.getSquadPathTarget())) {
+                // Same retarget-drop rule as the synchronous path
+                this.boss.clearSquadPath();
+            }
+        });
     }
 }

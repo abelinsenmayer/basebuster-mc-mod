@@ -3,6 +3,7 @@ package dev.abelinsenmayer.basebuster.events;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
+import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -22,6 +23,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
@@ -29,6 +32,18 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class BaseBusterEventBus {
+
+    /** Advances all in-progress long-range path searches by their per-tick slice. */
+    @SubscribeEvent
+    public void onServerTick(ServerTickEvent.Post event) {
+        PathSearchScheduler.onServerTick();
+    }
+
+    /** Drops pending path searches; their state is in-memory only. */
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        PathSearchScheduler.onServerStopping();
+    }
 
     @SubscribeEvent
     public void livingDestroyBlock(LivingDestroyBlockEvent event) {

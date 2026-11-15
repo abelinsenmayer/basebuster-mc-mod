@@ -12,8 +12,8 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Marches along the rough waypoint path the squad's planner produced (see
- * {@link PlanSquadPathGoal}) instead of re-running a full search toward a
+ * Marches along the rough waypoint path assigned to the squad's boss at
+ * raid spawn instead of re-running a full search toward a
  * distant flag every repath. Waypoints sit ~10 path nodes apart; getting
  * within {@link #WAYPOINT_REACH} of one advances to the next, so each leg is
  * a short local search ordinary navigation completes quickly -- and one long

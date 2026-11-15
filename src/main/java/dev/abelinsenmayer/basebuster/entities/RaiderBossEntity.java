@@ -3,7 +3,6 @@ package dev.abelinsenmayer.basebuster.entities;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
-import dev.abelinsenmayer.basebuster.entities.goals.PlanSquadPathGoal;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -51,9 +50,9 @@ public class RaiderBossEntity extends RaiderEntity {
     // not part of a raid and never drop a banner
     @Nullable
     private UUID raidId;
-    // Rough route to squadPathTarget planned by PlanSquadPathGoal (or assigned
-    // at raid spawn), consumed by FollowSquadPathGoal. Immutable snapshots;
-    // not persisted -- the goal re-plans after a world load
+    // Rough route to squadPathTarget assigned at raid spawn, consumed by
+    // FollowSquadPathGoal. Immutable snapshots; not persisted -- a squad that
+    // loses its route (world reload) stays on ordinary partial pathing
     private List<BlockPos> squadPath = List.of();
     @Nullable
     private BlockPos squadPathTarget;
@@ -81,9 +80,9 @@ public class RaiderBossEntity extends RaiderEntity {
     @Override
     protected void registerGoals() {
         super.registerGoals();
-        // Squad-route planning claims no goal flags, so it can fire alongside
-        // any other activity and completes the tick it starts
-        this.goalSelector.addGoal(2, new PlanSquadPathGoal(this));
+        // No PlanSquadPathGoal: bosses never re-plan their squad route on
+        // their own. Routes are assigned at raid spawn only, so a path lost
+        // to a world reload stays lost (re-planning on load is TBD).
     }
 
     /**

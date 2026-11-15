@@ -80,6 +80,10 @@ public class Config {
             .comment("Blocks above solid support that coarse long-range path searches (raid spawn anchors, squad routes) may plan scaffold moves; bounds the aerial search space for high flags")
             .defineInRange("raidPathing.maxAirHeight", 24, 4, 128);
 
+    public static final ModConfigSpec.IntValue RAID_PATHING_MS_PER_TICK = BUILDER
+            .comment("Milliseconds per server tick shared by all in-progress coarse path searches (raid spawn anchors, squad routes); searches resume across ticks until their node budget runs out")
+            .defineInRange("raidPathing.msPerTick", 4, 1, 45);
+
     public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER
             .comment("Movement speed multiplier applied to a raider while it is fleeing")
             .defineInRange("raiderFlee.speedMultiplier", 1.3, 1.0, 10.0);
@@ -87,6 +91,10 @@ public class Config {
     public static final ModConfigSpec.BooleanValue RAIDER_GOAL_SWITCH_LOGGING = BUILDER
             .comment("Whether to log every goal a raider starts or stops, so its decision-making is visible")
             .define("raiderDebug.logGoalSwitching", false);
+
+    public static final ModConfigSpec.BooleanValue RAID_SEARCH_HEARTBEAT_LOGGING = BUILDER
+            .comment("Whether to log a once-a-second heartbeat line per in-flight long-range path search (queue depth, expansions used, frontier size), plus a line on each completion")
+            .define("raiderDebug.logSearchHeartbeat", false);
 
     public static final ModConfigSpec.BooleanValue RAIDER_DEBUG_RENDER_SQUAD_PATH = BUILDER
             .comment("Whether to render red lines between the decimated waypoints of each living raider boss's squad path")

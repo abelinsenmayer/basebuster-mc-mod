@@ -7,7 +7,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
-import net.minecraft.world.level.pathfinder.PathFinder;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -52,7 +51,7 @@ public final class SquadPathSearch {
     // Below this distance normal navigation reaches the flag on its own
     private static final double MIN_SEARCH_DISTANCE = 32.0;
     // Node expansions budgeted per block of manhattan distance to the flag
-    private static final int NODES_PER_BLOCK = 128;
+    private static final int NODES_PER_BLOCK = 500;
     private static final int TARGET_ACCURACY = 2;
     private static final float SEARCH_DEPTH_MULTIPLIER = 1.0F;
 
@@ -72,12 +71,14 @@ public final class SquadPathSearch {
     }
 
     /**
-     * Runs one bounded A* from the mob to the flag, or null when a guardrail
-     * rejects the search (out of range, unloaded chunks on the route) or the
-     * budget leaves no path at all.
+     * Starts a bounded A* from the mob to the flag, stepped across ticks by
+     * {@link PathSearchScheduler} rather than run to completion inline. Null
+     * when a guardrail rejects the search (out of range, unloaded chunks on
+     * the route); a budget-exhausted search still yields a best-approach
+     * partial path via {@link ResumablePathSearch#result}.
      */
     @Nullable
-    public static Path searchToFlag(Mob mob, BlockPos flag) {
+    public static ResumablePathSearch beginSearchToFlag(Mob mob, BlockPos flag) {
         if (!(mob.level() instanceof ServerLevel level)
                 || !withinSearchRange(mob, flag)
                 || !routeLoaded(level, mob.blockPosition(), flag)) {
@@ -85,13 +86,21 @@ public final class SquadPathSearch {
         }
 
         int distance = mob.blockPosition().distManhattan(flag);
+        ResumablePathSearch search = new ResumablePathSearch(coarseEvaluator(mob), nodeBudget(distance));
+        search.begin(regionAround(level, mob.blockPosition(), flag), mob, Set.of(flag),
+                (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, SEARCH_DEPTH_MULTIPLIER);
+        return search;
+    }
+
+    /**
+     * The shared evaluator setup for coarse searches (squad routes, raid spawn
+     * anchors): door-capable, with tunneling and bounded aerial emissions.
+     */
+    public static RaiderNodeEvaluator coarseEvaluator(Mob mob) {
         RaiderNodeEvaluator evaluator = RaiderNodeEvaluator.coarse(mob);
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
-        PathFinder finder = new PathFinder(evaluator, nodeBudget(distance));
-        PathNavigationRegion region = regionAround(level, mob.blockPosition(), flag);
-        return finder.findPath(region, mob, Set.of(flag),
-                (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, SEARCH_DEPTH_MULTIPLIER);
+        return evaluator;
     }
 
     /**
@@ -102,9 +111,11 @@ public final class SquadPathSearch {
      * same reach per block.
      */
     public static int nodeBudget(int distance) {
-        return (int) Math.min(
-                (long) distance * NODES_PER_BLOCK,
-                Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
+        // ABE TODO
+//        return (int) Math.min(
+//                (long) distance * NODES_PER_BLOCK,
+//                Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
+        return distance * NODES_PER_BLOCK;
     }
 
     /**

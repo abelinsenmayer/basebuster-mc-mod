@@ -27,8 +27,8 @@ import java.util.List;
 
 /**
  * Debug overlay drawing each living {@link RaiderBossEntity}'s squad path --
- * the decimated rough route assigned at raid spawn or re-planned by
- * {@code PlanSquadPathGoal} -- as red line segments between its waypoints.
+ * the decimated rough route assigned at raid spawn -- as red line segments
+ * between its waypoints.
  * A leader segment from the boss to the first waypoint attributes each route
  * to its squad. Toggled by {@code raiderDebug.renderSquadPath}.
  */
