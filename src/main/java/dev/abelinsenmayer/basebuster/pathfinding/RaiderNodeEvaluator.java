@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
@@ -82,7 +83,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     private final int maxAerialHeight;
     // Summed column hardness a coarse search tunnels through, ~2-3 blocks of
     // stone; thicker fortifications price out of the search space entirely
-    private static final float COARSE_TUNNEL_HARDNESS_CAP = 10000000000.0F;
+    private static final float COARSE_TUNNEL_HARDNESS_CAP = 1000.0F;
 
     public RaiderNodeEvaluator(Mob mob) {
         this(mob, Float.MAX_VALUE, Integer.MAX_VALUE);
@@ -375,17 +376,17 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     }
 
     /**
-     * Whether a scaffold could be placed at (x, y, z): empty space or a
-     * replaceable block, but never a fluid cell -- raiders must swim or
-     * bottom-walk through water rather than scaffold over it. Lava was
-     * already excluded by the fluid check.
+     * Whether a scaffold could be placed at (x, y, z): empty space, a
+     * replaceable block, or a water cell -- a placed scaffold displaces the
+     * water rather than waterlogging. Other fluids (lava included) reject it.
      */
     private boolean isReplaceableForScaffold(int x, int y, int z) {
         BlockState state = this.currentContext.getBlockState(new BlockPos(x, y, z));
-        if (!state.getFluidState().isEmpty()) {
+        FluidState fluid = state.getFluidState();
+        if (!fluid.isEmpty() && !fluid.is(FluidTags.WATER)) {
             return false;
         }
-        return state.isAir() || state.canBeReplaced();
+        return state.isAir() || state.canBeReplaced() || fluid.is(FluidTags.WATER);
     }
 
     /**

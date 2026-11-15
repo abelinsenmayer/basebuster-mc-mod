@@ -331,15 +331,12 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
                 continue;
             }
             BlockPos below = pos.below();
-            BlockState belowState = level.getBlockState(below);
-            FluidState belowFluid = belowState.getFluidState();
-            // The evaluator never plans bridge nodes over water, and the goal
-            // doesn't lay scaffolds into fluid cells either -- the mob swims
-            // or walks the bottom across water instead
+            // The node cell must be clear for the mob; the cell under it just
+            // has to hold a scaffold, which ensureScaffolding itself decides
+            // (air, replaceable blocks, and water cells are in; lava and
+            // occupied cells are out)
             if (this.isTraversable(level, pos)
-                    && !(belowState.getBlock() instanceof ScaffoldingBlock)
-                    && belowFluid.isEmpty()
-                    && (belowState.isAir() || belowState.canBeReplaced())
+                    && !(level.getBlockState(below).getBlock() instanceof ScaffoldingBlock)
                     && !this.pathDescendsInto(path, i, below)) {
                 this.ensureScaffolding(level, below);
             }
@@ -401,11 +398,9 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
      * Occupied cells and lava are left alone. Support distance doesn't matter
      * -- raider scaffolding has no stability limit and never collapses.
      *
-     * <p>Water acceptance is a placement capability, not a planning one: the
-     * evaluator never charts scaffold routes through water, but placements
-     * the path did call for still succeed when the target cell holds water
-     * (a pillar anchor while the mob stands in a pool, a cell that flooded
-     * after the path was planned).
+     * <p>Placement mirrors the evaluator's {@code isReplaceableForScaffold},
+     * which prices bridge and pillar routes through water the same as through
+     * air: the scaffold always lands dry.
      */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
