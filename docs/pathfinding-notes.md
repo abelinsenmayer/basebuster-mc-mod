@@ -85,9 +85,11 @@ set are locals. But every piece of state the loop needs is reachable, so
 
 `PathSearchScheduler` steps the queue each `ServerTickEvent.Post` under a
 millisecond budget (`raidPathing.msPerTick`), round-robin so queued searches
-don't starve. Per-tick cost is bounded; total CPU is unchanged — path delivery
-is later in wall-clock time, which is fine for raid spawn and squad refresh
-searches that have no same-tick deadline.
+don't starve. Per-tick cost is bounded, and each search's total CPU is capped
+by a 30-second wall-clock limit (`SquadPathSearch.SEARCH_TIME_LIMIT`) rather
+than vanilla's expansion count — path delivery is later in wall-clock time,
+which is fine for raid spawn and squad refresh searches that have no
+same-tick deadline.
 
 ## Reading order
 

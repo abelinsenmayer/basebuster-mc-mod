@@ -9,6 +9,7 @@ import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -28,8 +29,9 @@ import java.util.Set;
  *   the search region to already be loaded -- {@link PathNavigationRegion}
  *   reads real chunks, so a distant flag would otherwise synchronously
  *   generate a corridor of terrain on the server thread.
- *   <li><b>Scaled node budget</b>: expansions grow with distance and clamp at
- *   {@link Config#RAIDER_SQUAD_PATHING_MAX_NODES}, bounding worst-case cost.
+ *   <li><b>Wall-clock limit</b>: {@link #SEARCH_TIME_LIMIT} caps total CPU
+ *   across all of a search's per-tick slices, bounding worst-case cost
+ *   regardless of how many expansions that buys.
  *   <li><b>Coarse evaluator</b>: {@link RaiderNodeEvaluator#coarse} bounds the
  *   search space itself -- tunnel hardness and aerial distance above support
  *   -- so thick fortifications and open sky can't flood the frontier. A
@@ -37,9 +39,9 @@ import java.util.Set;
  *   full evaluator anyway.
  * </ul>
  *
- * <p>A budget-exhausted search still returns the best-approach path, which
- * decimates into a useful partial corridor -- graceful degradation rather
- * than failure.
+ * <p>A search that hits its time limit still returns the best-approach path,
+ * which decimates into a useful partial corridor -- graceful degradation
+ * rather than failure.
  */
 public final class SquadPathSearch {
     // Padding around the start/target bounding box for the search region
@@ -50,8 +52,9 @@ public final class SquadPathSearch {
     private static final int WAYPOINT_STRIDE = 1;
     // Below this distance normal navigation reaches the flag on its own
     private static final double MIN_SEARCH_DISTANCE = 32.0;
-    // Node expansions budgeted per block of manhattan distance to the flag
-    private static final int NODES_PER_BLOCK = 500;
+    // Wall-clock cap on one coarse search, shared by squad routes and raid
+    // spawn searches; generous since {@link PathSearchScheduler} amortizes it
+    public static final Duration SEARCH_TIME_LIMIT = Duration.ofSeconds(30);
     private static final int TARGET_ACCURACY = 2;
     private static final float SEARCH_DEPTH_MULTIPLIER = 1.0F;
 
@@ -74,8 +77,8 @@ public final class SquadPathSearch {
      * Starts a bounded A* from the mob to the flag, stepped across ticks by
      * {@link PathSearchScheduler} rather than run to completion inline. Null
      * when a guardrail rejects the search (out of range, unloaded chunks on
-     * the route); a budget-exhausted search still yields a best-approach
-     * partial path via {@link ResumablePathSearch#result}.
+     * the route); a search that hits its time limit still yields a
+     * best-approach partial path via {@link ResumablePathSearch#result}.
      */
     @Nullable
     public static ResumablePathSearch beginSearchToFlag(Mob mob, BlockPos flag) {
@@ -86,7 +89,7 @@ public final class SquadPathSearch {
         }
 
         int distance = mob.blockPosition().distManhattan(flag);
-        ResumablePathSearch search = new ResumablePathSearch(coarseEvaluator(mob), nodeBudget(distance));
+        ResumablePathSearch search = new ResumablePathSearch(coarseEvaluator(mob), SEARCH_TIME_LIMIT);
         search.begin(regionAround(level, mob.blockPosition(), flag), mob, Set.of(flag),
                 (float) distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, SEARCH_DEPTH_MULTIPLIER);
         return search;
@@ -101,21 +104,6 @@ public final class SquadPathSearch {
         evaluator.setCanPassDoors(true);
         evaluator.setCanOpenDoors(true);
         return evaluator;
-    }
-
-    /**
-     * The node-expansion budget for one bounded long-range search over
-     * {@code distance} blocks: expansions scale with distance and clamp at
-     * {@link Config#RAIDER_SQUAD_PATHING_MAX_NODES}. Shared by squad route
-     * planning and the raid spawn searches so every coarse search buys the
-     * same reach per block.
-     */
-    public static int nodeBudget(int distance) {
-        // ABE TODO
-//        return (int) Math.min(
-//                (long) distance * NODES_PER_BLOCK,
-//                Config.RAIDER_SQUAD_PATHING_MAX_NODES.get());
-        return distance * NODES_PER_BLOCK;
     }
 
     /**

@@ -105,7 +105,8 @@ public final class PathSearchScheduler {
         for (Pending pending : PENDING) {
             ResumablePathSearch search = pending.search();
             sb.append(" | ").append(pending.label())
-                    .append(" visited=").append(search.visited()).append('/').append(search.budget())
+                    .append(" visited=").append(search.visited())
+                    .append(" elapsed=").append(search.elapsedMillis()).append('/').append(search.limitMillis()).append("ms")
                     .append(" open=").append(search.frontierSize());
         }
         BaseBuster.LOGGER.info(sb.toString());

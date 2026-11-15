@@ -18,7 +18,7 @@ import javax.annotation.Nullable;
  *
  * <p>The search is the expensive kind ordinary navigation can't afford per
  * raider, so {@link SquadPathSearch} bounds it by distance band, loaded-chunk
- * coverage, and node budget, and this goal fires it only when the stored path
+ * coverage, and a wall-clock time limit, and this goal fires it only when the stored path
  * is missing/stale or the refresh cooldown has elapsed. The search itself is
  * stepped across later ticks by {@link PathSearchScheduler}, so the goal only
  * submits work; it declares no {@link Goal.Flag}s and returns to idle while

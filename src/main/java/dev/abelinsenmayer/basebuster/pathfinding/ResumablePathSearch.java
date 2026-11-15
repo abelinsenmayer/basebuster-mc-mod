@@ -11,6 +11,7 @@ import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.level.pathfinder.Target;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -23,7 +24,9 @@ import java.util.stream.Collectors;
 /**
  * Vanilla {@code PathFinder}'s A* run as a resumable state machine: the same
  * expansion loop, but spread across many {@link #step} calls so a very large
- * search budget no longer has to be spent inside one tick. {@code PathFinder}
+ * search's total cost no longer has to be spent inside one tick. The search
+ * as a whole is bounded by a wall-clock {@link #timeLimit} -- measured across
+ * all {@link #step} slices -- rather than vanilla's expansion cap. {@code PathFinder}
  * itself can't be paused (its counters and reached-target set are locals), so
  * this mirrors the loop over the same public state:
  *
@@ -49,7 +52,7 @@ public final class ResumablePathSearch {
     private static final float FUDGING = 1.5F;
 
     private final NodeEvaluator nodeEvaluator;
-    private final int maxVisitedNodes;
+    private final Duration timeLimit;
     private final BinaryHeap openSet = new BinaryHeap();
     private final Node[] neighbors = new Node[32];
 
@@ -59,15 +62,16 @@ public final class ResumablePathSearch {
     private Set<Target> reachedTargets = Set.of();
     private float maxRange;
     private int accuracy;
-    private int budget;
+    private long startedAtNanos;
+    private long deadlineNanos;
     private int visited;
     private boolean finished;
     @Nullable
     private Path result;
 
-    public ResumablePathSearch(NodeEvaluator nodeEvaluator, int maxVisitedNodes) {
+    public ResumablePathSearch(NodeEvaluator nodeEvaluator, Duration timeLimit) {
         this.nodeEvaluator = nodeEvaluator;
-        this.maxVisitedNodes = maxVisitedNodes;
+        this.timeLimit = timeLimit;
     }
 
     /**
@@ -91,7 +95,8 @@ public final class ResumablePathSearch {
                         Function.identity()));
         this.maxRange = maxRange;
         this.accuracy = accuracy;
-        this.budget = (int) (this.maxVisitedNodes * searchDepthMultiplier);
+        this.startedAtNanos = System.nanoTime();
+        this.deadlineNanos = this.startedAtNanos + (long) (this.timeLimit.toNanos() * searchDepthMultiplier);
         this.reachedTargets = new HashSet<>(this.targetMap.size());
         this.startNode.g = 0.0F;
         this.startNode.h = this.getBestH(this.startNode);
@@ -113,10 +118,11 @@ public final class ResumablePathSearch {
         }
         long deadline = System.nanoTime() + nanosBudget;
         do {
-            if (this.openSet.isEmpty() || ++this.visited >= this.budget) {
+            if (this.openSet.isEmpty() || System.nanoTime() >= this.deadlineNanos) {
                 this.finish();
                 return true;
             }
+            this.visited++;
 
             Node node = this.openSet.pop();
             node.closed = true;
@@ -166,9 +172,14 @@ public final class ResumablePathSearch {
         return this.visited;
     }
 
-    /** The total expansion cap (node budget x search-depth multiplier). */
-    public int budget() {
-        return this.budget;
+    /** Wall-clock milliseconds since {@link #begin}, across all {@link #step} slices. */
+    public long elapsedMillis() {
+        return (System.nanoTime() - this.startedAtNanos) / 1_000_000L;
+    }
+
+    /** The total wall-clock cap (time limit x search-depth multiplier). */
+    public long limitMillis() {
+        return (this.deadlineNanos - this.startedAtNanos) / 1_000_000L;
     }
 
     /** Nodes still on the frontier. */

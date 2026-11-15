@@ -60,10 +60,6 @@ public class Config {
             .comment("Maximum flag distance a squad path search will be attempted over")
             .defineInRange("raiderSquad.pathingMaxDistance", 256.0, 32.0, 4096.0);
 
-    public static final ModConfigSpec.IntValue RAIDER_SQUAD_PATHING_MAX_NODES = BUILDER
-            .comment("Cap on node expansions for a single squad path search")
-            .defineInRange("raiderSquad.pathingMaxNodes", 49152, 1024, 1048576);
-
     public static final ModConfigSpec.IntValue RAIDER_SQUAD_PATHING_REFRESH_TICKS = BUILDER
             .comment("Ticks between squad path recomputes while the stored path is still valid")
             .defineInRange("raiderSquad.pathingRefreshTicks", 15000, 20, 20000);
@@ -77,7 +73,7 @@ public class Config {
             .defineInRange("raidPathing.maxAirHeight", 24, 4, 128);
 
     public static final ModConfigSpec.IntValue RAID_PATHING_MS_PER_TICK = BUILDER
-            .comment("Milliseconds per server tick shared by all in-progress coarse path searches (raid spawn anchors, squad routes); searches resume across ticks until their node budget runs out")
+            .comment("Milliseconds per server tick shared by all in-progress coarse path searches (raid spawn anchors, squad routes); searches resume across ticks until their wall-clock time limit runs out")
             .defineInRange("raidPathing.msPerTick", 4, 1, 45);
 
     public static final ModConfigSpec.DoubleValue RAIDER_FLEE_SPEED_MULTIPLIER = BUILDER

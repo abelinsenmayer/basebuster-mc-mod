@@ -76,7 +76,7 @@ import java.util.UUID;
  * by {@link PathSearchScheduler} (see {@link PendingRaid}), so the party
  * materializes some ticks after the trigger rather than freezing one tick on
  * a very large search. Each search is bounded by
- * {@link SquadPathSearch#nodeBudget}, the same distance-scaled cap squad
+ * {@link SquadPathSearch#SEARCH_TIME_LIMIT}, the same wall-clock cap squad
  * route planning uses.
  */
 public final class RaidSpawner {
@@ -248,7 +248,7 @@ public final class RaidSpawner {
          */
         void start(List<BlockPos> anchors) {
             this.probe.setPathfindingMalus(PathType.WATER, SPAWN_SEARCH_WATER_MALUS);
-            ResumablePathSearch search = newCoarseSearch(this.probe, this.distance);
+            ResumablePathSearch search = newCoarseSearch(this.probe);
             search.begin(flagRegion(this.level, this.flagPos, anchors), this.probe, Set.copyOf(anchors),
                     (float) this.distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
             PathSearchScheduler.schedule(search, "raid anchors from flag " + this.flagPos, this.probe::isAlive,
@@ -286,7 +286,7 @@ public final class RaidSpawner {
                     continue;
                 }
                 this.pendingSearches++;
-                ResumablePathSearch search = newCoarseSearch(this.probe, this.distance);
+                ResumablePathSearch search = newCoarseSearch(this.probe);
                 search.begin(region, this.probe, Set.of(entry.getKey()),
                         (float) this.distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
                 PathSearchScheduler.schedule(search, "raid group " + indices + " to " + entry.getKey(), this.probe::isAlive,
@@ -418,11 +418,11 @@ public final class RaidSpawner {
     /**
      * A standalone resumable search from the flag, using the coarse evaluator
      * variant: spawn-time searches are long-range, so tunnel and aerial
-     * emissions stay bounded rather than flooding the budget in open sky or
+     * emissions stay bounded rather than flooding the search in open sky or
      * fortifications.
      */
-    private static ResumablePathSearch newCoarseSearch(Mob probe, int distance) {
-        return new ResumablePathSearch(SquadPathSearch.coarseEvaluator(probe), SquadPathSearch.nodeBudget(distance));
+    private static ResumablePathSearch newCoarseSearch(Mob probe) {
+        return new ResumablePathSearch(SquadPathSearch.coarseEvaluator(probe), SquadPathSearch.SEARCH_TIME_LIMIT);
     }
 
     /**
