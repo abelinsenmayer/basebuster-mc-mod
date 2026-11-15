@@ -121,11 +121,13 @@ public final class RaidSpawner {
     /**
      * Attempts to start a raid on the flag at {@code flagPos}, placing the
      * party at the cheapest reachable point on the outer spawn ring. The
-     * party materializes once its path searches finish, some ticks later.
+     * party materializes once its path searches finish, some ticks later;
+     * {@code onPartySpawned} runs then (and only then), so callers can
+     * notify once the raid is real rather than merely scheduled.
      *
      * @return whether the raid was accepted and scheduled
      */
-    public static boolean startRaid(ServerLevel level, BlockPos flagPos) {
+    public static boolean startRaid(ServerLevel level, BlockPos flagPos, Runnable onPartySpawned) {
         // Probe with the boss: it's the largest member, so routes and spawn
         // spots that fit the boss fit everyone
         RaiderBossEntity boss = newPartyProbe(level, flagPos);
@@ -141,7 +143,7 @@ public final class RaidSpawner {
         int groupCount = Config.RAID_SINGLE_SPAWN_POINT.get()
                 ? 1
                 : RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, boss, anchors, distance, groupCount);
+        return scheduleParty(level, flagPos, boss, anchors, distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -153,7 +155,7 @@ public final class RaidSpawner {
      *
      * @return whether the raid was accepted and scheduled
      */
-    public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos) {
+    public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos, Runnable onPartySpawned) {
         RaiderBossEntity boss = newPartyProbe(level, flagPos);
         if (boss == null) {
             return false;
@@ -164,7 +166,7 @@ public final class RaidSpawner {
         }
         int distance = Math.max(flagPos.distManhattan(anchor), 1);
         int groupCount = RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, boss, List.of(anchor), distance, groupCount);
+        return scheduleParty(level, flagPos, boss, List.of(anchor), distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -206,8 +208,8 @@ public final class RaidSpawner {
      * Queues the searches a party needs and returns immediately; the party
      * itself spawns when they finish (see {@link PendingRaid}).
      */
-    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, List<BlockPos> anchors, int distance, int groupCount) {
-        new PendingRaid(level, flagPos, probe, distance, groupCount, raidTier(level, flagPos)).start(anchors);
+    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, List<BlockPos> anchors, int distance, int groupCount, Runnable onPartySpawned) {
+        new PendingRaid(level, flagPos, probe, distance, groupCount, raidTier(level, flagPos), onPartySpawned).start(anchors);
         return true;
     }
 
@@ -226,17 +228,19 @@ public final class RaidSpawner {
         private final int distance;
         private final int groupCount;
         private final int raidTier;
+        private final Runnable onPartySpawned;
         private List<BlockPos> spots = List.of();
         private List<Path> paths = List.of();
         private int pendingSearches;
 
-        private PendingRaid(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, int distance, int groupCount, int raidTier) {
+        private PendingRaid(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, int distance, int groupCount, int raidTier, Runnable onPartySpawned) {
             this.level = level;
             this.flagPos = flagPos;
             this.probe = probe;
             this.distance = distance;
             this.groupCount = groupCount;
             this.raidTier = raidTier;
+            this.onPartySpawned = onPartySpawned;
         }
 
         /**
@@ -309,6 +313,7 @@ public final class RaidSpawner {
         private void finish() {
             this.probe.setPathfindingMalus(PathType.WATER, PathType.WATER.getMalus());
             spawnParty(this.level, this.flagPos, this.probe, this.spots, this.paths, this.raidTier);
+            this.onPartySpawned.run();
         }
     }
 

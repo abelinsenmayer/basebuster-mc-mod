@@ -43,14 +43,17 @@ public class RaidSpawnerItem extends Item {
             return InteractionResult.CONSUME;
         }
 
-        if (RaidSpawner.startRaidAt(serverLevel, flagPos, spawnPos)) {
+        int raidTier = RaidSpawner.raidTier(serverLevel, flagPos);
+        // The party materializes once its path searches finish, some ticks
+        // later; announce the raid then, not at trigger time
+        if (RaidSpawner.startRaidAt(serverLevel, flagPos, spawnPos, () -> {
             if (player != null) {
                 player.displayClientMessage(
-                        Component.literal("A level " + RaidSpawner.raidTier(serverLevel, flagPos) + " raid has begun!"),
-                        false);
-                if (!player.hasInfiniteMaterials()) {
-                    context.getItemInHand().shrink(1);
-                }
+                        Component.literal("A level " + raidTier + " raid has begun!"), false);
+            }
+        })) {
+            if (player != null && !player.hasInfiniteMaterials()) {
+                context.getItemInHand().shrink(1);
             }
         } else if (player != null) {
             player.displayClientMessage(

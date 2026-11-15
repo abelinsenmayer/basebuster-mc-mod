@@ -160,10 +160,11 @@ public class BaseFlagBlock extends Block implements EntityBlock {
                         Component.literal("Only a player-owned flag can be raided"), true);
                 return ItemInteractionResult.CONSUME;
             }
-            if (RaidSpawner.startRaid((ServerLevel) level, pos)) {
-                player.displayClientMessage(
-                        Component.literal("A level " + RaidSpawner.raidTier((ServerLevel) level, pos) + " raid has begun!"),
-                        false);
+            int raidTier = RaidSpawner.raidTier((ServerLevel) level, pos);
+            // The party materializes once its path searches finish, some
+            // ticks later; announce the raid then, not at trigger time
+            if (RaidSpawner.startRaid((ServerLevel) level, pos, () -> player.displayClientMessage(
+                    Component.literal("A level " + raidTier + " raid has begun!"), false))) {
                 if (!player.hasInfiniteMaterials()) {
                     stack.shrink(1);
                 }
