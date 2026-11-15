@@ -31,7 +31,7 @@ public enum RaiderKit {
      * to full iron armor and Sharpness I; tier 5 raises the sword to
      * Sharpness III.
      */
-    SWORD_AND_BOARD(18.0, 0.35, false, 0.0) {
+    SWORD_AND_BOARD(18.0, 0.30, false, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             int tier = raider.getRaidTier();
@@ -59,7 +59,7 @@ public enum RaiderKit {
      * upgrades the helmet to full leather armor; tiers 3-5 add Power I-III to
      * the bow.
      */
-    BOWMAN(14.0, 0.32, true, 0.0) {
+    BOWMAN(14.0, 0.26, true, 0.0) {
         @Override
         public void equip(RaiderEntity raider, RandomSource random) {
             int tier = raider.getRaidTier();
