@@ -87,10 +87,6 @@ public final class RaidSpawner {
     private static final int RING_CANDIDATES = 16;
     // Manhattan distance from a candidate at which the path counts as reached
     private static final int TARGET_ACCURACY = 3;
-    // Water malus applied to the probe during spawn-time searches only: vanilla
-    // prices wading at 8, cheap enough that a lake crossing beats the land
-    // detour and anchor selection keeps landing across water
-    private static final float SPAWN_SEARCH_WATER_MALUS = 8.0F;
     // Raid composition per flag base level:
     // RAID_COMPOSITION[level - 1] = {bosses, bowmen, sword-and-board, tanks}.
     // Levels past the table clamp to the last row.
@@ -245,13 +241,9 @@ public final class RaidSpawner {
 
         /**
          * Stage 1: the multi-target flag-to-anchors search that picks the
-         * primary spot (and doubles as the first group's route). The raised
-         * water malus stays on the probe until every search completes so all
-         * spawn-time routes price lake crossings the same; {@link #finish}
-         * restores it before the probe spawns as a real boss.
+         * primary spot (and doubles as the first group's route).
          */
         void start(List<BlockPos> anchors) {
-            this.probe.setPathfindingMalus(PathType.WATER, SPAWN_SEARCH_WATER_MALUS);
             ResumablePathSearch search = newCoarseSearch(this.probe);
             search.begin(flagRegion(this.level, this.flagPos, anchors), this.probe, Set.copyOf(anchors),
                     (float) this.distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
@@ -311,7 +303,6 @@ public final class RaidSpawner {
         }
 
         private void finish() {
-            this.probe.setPathfindingMalus(PathType.WATER, PathType.WATER.getMalus());
             spawnParty(this.level, this.flagPos, this.probe, this.spots, this.paths, this.raidTier);
             this.onPartySpawned.run();
         }

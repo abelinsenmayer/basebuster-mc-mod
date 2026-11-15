@@ -44,7 +44,9 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <p>State is in-memory only; a search abandoned across a world reload is
- * simply dropped (the goal re-plans on its next refresh).
+ * dropped. Requesters that need persistence save their intent and resubmit
+ * on load -- RaiderBossEntity does this for squad-path searches via its
+ * saved pending-search target.
  */
 public final class ResumablePathSearch {
     // Vanilla weights the heuristic by 1.5 (greedy A*); keeps the frontier

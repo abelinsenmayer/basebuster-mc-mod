@@ -3,9 +3,13 @@ package dev.abelinsenmayer.basebuster.entities;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
+import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
+import dev.abelinsenmayer.basebuster.pathfinding.ResumablePathSearch;
+import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -35,6 +39,9 @@ public class RaiderBossEntity extends RaiderEntity {
     private static final EntityDataAccessor<CompoundTag> DATA_SQUAD_PATH =
             SynchedEntityData.defineId(RaiderBossEntity.class, EntityDataSerializers.COMPOUND_TAG);
     private static final String SQUAD_PATH_TAG = "squad_path";
+    private static final String SQUAD_PATH_SAVE_TAG = "SquadPath";
+    private static final String SQUAD_PATH_TARGET_TAG = "SquadPathTarget";
+    private static final String PENDING_SQUAD_PATH_TAG = "PendingSquadPathTarget";
     // A dying boss scans this far for surviving bosses from the same raid
     // before awarding the victory banner
     private static final double RAID_MATE_SEARCH_RADIUS = 128.0;
@@ -46,11 +53,21 @@ public class RaiderBossEntity extends RaiderEntity {
     @Nullable
     private UUID raidId;
     // Rough route to squadPathTarget assigned at raid spawn, consumed by
-    // FollowSquadPathGoal. Immutable snapshots; not persisted -- a squad that
-    // loses its route (world reload) stays on ordinary partial pathing
+    // FollowSquadPathGoal. Immutable snapshots, persisted so a squad keeps
+    // its route across world reloads
     private List<BlockPos> squadPath = List.of();
     @Nullable
     private BlockPos squadPathTarget;
+    // The flag a scheduled squad-path search was running toward. Persisted
+    // because the scheduler is in-memory only: a search interrupted by a
+    // world save survives solely as this target, which tick() resubmits on
+    // load. Cleared by the search's completion callback
+    @Nullable
+    private BlockPos pendingSquadPathTarget;
+    // Transient companion to pendingSquadPathTarget: whether that search is
+    // actually queued with PathSearchScheduler right now. False after a load,
+    // which is what triggers the restart
+    private boolean squadPathSearchInFlight;
 
     public RaiderBossEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -72,8 +89,22 @@ public class RaiderBossEntity extends RaiderEntity {
     protected void registerGoals() {
         super.registerGoals();
         // No PlanSquadPathGoal: bosses never re-plan their squad route on
-        // their own. Routes are assigned at raid spawn only, so a path lost
-        // to a world reload stays lost (re-planning on load is TBD).
+        // their own. Routes are assigned at raid spawn only; persistence and
+        // the reload-restart of an interrupted search live in the save-data
+        // methods and tick() instead.
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        // A squad-path search in flight when the world saved survives only as
+        // pendingSquadPathTarget; resubmit it with the same parameters once
+        // the world is ticking again
+        if (this.pendingSquadPathTarget != null && !this.squadPathSearchInFlight
+                && this.level() instanceof ServerLevel
+                && Config.RAIDER_SQUAD_PATHING_ENABLED.get()) {
+            this.planSquadPathTo(this.pendingSquadPathTarget);
+        }
     }
 
     /**
@@ -89,6 +120,48 @@ public class RaiderBossEntity extends RaiderEntity {
     @Nullable
     public BlockPos getSquadPathTarget() {
         return this.squadPathTarget;
+    }
+
+    /**
+     * Whether a squad-path search is in flight or was at last save. Pending
+     * state lives here (not on PlanSquadPathGoal) so it can ride the boss's
+     * NBT across world reloads.
+     */
+    public boolean isSquadPathSearchPending() {
+        return this.pendingSquadPathTarget != null;
+    }
+
+    /**
+     * Queues a bounded long-range search from this boss to {@code flag},
+     * stepped across ticks by {@link PathSearchScheduler}; the decimated
+     * result replaces the squad route. Shared by PlanSquadPathGoal and the
+     * reload restart in {@link #tick} -- both get the same guardrail
+     * rejection and retarget-drop rules as a result.
+     */
+    public void planSquadPathTo(BlockPos flag) {
+        ResumablePathSearch search = SquadPathSearch.beginSearchToFlag(this, flag);
+        if (search == null) {
+            // Guardrails rejected the search outright
+            this.pendingSquadPathTarget = null;
+            if (!flag.equals(this.squadPathTarget)) {
+                // The retargeted flag got no path: drop waypoints that would
+                // march the squad toward a different flag
+                this.clearSquadPath();
+            }
+            return;
+        }
+        this.pendingSquadPathTarget = flag.immutable();
+        this.squadPathSearchInFlight = true;
+        PathSearchScheduler.schedule(search, "squad path to flag " + flag, this::isAlive, path -> {
+            this.squadPathSearchInFlight = false;
+            this.pendingSquadPathTarget = null;
+            if (path != null && flag.equals(this.nearestUncapturedFlag())) {
+                this.setSquadPath(SquadPathSearch.decimate(path, false), flag);
+            } else if (path == null && !flag.equals(this.squadPathTarget)) {
+                // Same retarget-drop rule as the rejection path above
+                this.clearSquadPath();
+            }
+        });
     }
 
     public void setSquadPath(List<BlockPos> waypoints, BlockPos flagPos) {
@@ -194,6 +267,16 @@ public class RaiderBossEntity extends RaiderEntity {
         if (this.raidId != null) {
             tag.putUUID(RAID_TAG, this.raidId);
         }
+        if (!this.squadPath.isEmpty()) {
+            tag.putLongArray(SQUAD_PATH_SAVE_TAG,
+                    this.squadPath.stream().mapToLong(BlockPos::asLong).toArray());
+        }
+        if (this.squadPathTarget != null) {
+            tag.putLong(SQUAD_PATH_TARGET_TAG, this.squadPathTarget.asLong());
+        }
+        if (this.pendingSquadPathTarget != null) {
+            tag.putLong(PENDING_SQUAD_PATH_TAG, this.pendingSquadPathTarget.asLong());
+        }
     }
 
     @Override
@@ -201,6 +284,21 @@ public class RaiderBossEntity extends RaiderEntity {
         super.readAdditionalSaveData(tag);
         if (tag.hasUUID(RAID_TAG)) {
             this.raidId = tag.getUUID(RAID_TAG);
+        }
+        // Path and target are written together; a stray partial pair isn't
+        // worth resurrecting
+        long[] packedPath = tag.getLongArray(SQUAD_PATH_SAVE_TAG);
+        if (packedPath.length > 0 && tag.contains(SQUAD_PATH_TARGET_TAG, Tag.TAG_LONG)) {
+            List<BlockPos> waypoints = new ArrayList<>(packedPath.length);
+            for (long pos : packedPath) {
+                waypoints.add(BlockPos.of(pos));
+            }
+            // setSquadPath also mirrors the route into synced entity data, so
+            // the debug overlay survives the reload too
+            this.setSquadPath(waypoints, BlockPos.of(tag.getLong(SQUAD_PATH_TARGET_TAG)));
+        }
+        if (tag.contains(PENDING_SQUAD_PATH_TAG, Tag.TAG_LONG)) {
+            this.pendingSquadPathTarget = BlockPos.of(tag.getLong(PENDING_SQUAD_PATH_TAG));
         }
     }
 }
