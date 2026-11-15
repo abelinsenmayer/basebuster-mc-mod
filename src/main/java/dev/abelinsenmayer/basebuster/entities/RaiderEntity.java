@@ -86,7 +86,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // attribute scale): near-full land speed so moats, rivers, and waterfall
     // bases don't stall an assault. Sinking raiders keep vanilla underwater
     // footing since they walk the bottom rather than swim.
-    private static final double SWIM_MOVEMENT_EFFICIENCY = 0.7;
+    private static final double SWIM_MOVEMENT_EFFICIENCY = 0.5;
 
     @Nullable
     private RaiderBossEntity squadLeader;

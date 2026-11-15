@@ -311,9 +311,8 @@ public class BaseFlagBlockEntity extends BlockEntity {
         if (tag.contains("base_level")) {
             this.baseLevel = tag.getInt("base_level");
         }
-        if (tag.contains("debug_boundary")) {
-            this.debugBoundary = tag.getBoolean("debug_boundary");
-        }
+        // Absent means off: saveAdditional only writes debug_boundary while it's true
+        this.debugBoundary = tag.getBoolean("debug_boundary");
         syncDebugOverlayState();
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");

@@ -340,8 +340,8 @@ public final class RaidSpawner {
             extra.setRaidId(raidId);
             extra.setRaidTier(raidTier);
             extra.setSkin(RaiderSkin.ZOMBIE);
-            spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i), spreadRadius, random));
-            assignSquadPath(extra, groupPaths.get(i), flagPos);
+            spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i % spots.size()), spreadRadius, random));
+            assignSquadPath(extra, groupPaths.get(i % groupPaths.size()), flagPos);
             bosses.add(extra);
         }
 

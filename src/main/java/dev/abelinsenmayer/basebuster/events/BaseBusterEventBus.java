@@ -17,8 +17,10 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
@@ -106,6 +108,23 @@ public class BaseBusterEventBus {
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             FlagSpawnProtection.clearSpawnIfControlled(player);
+        }
+    }
+
+    /**
+     * Lets a sneaking player use the flag's right-click interactions (capture,
+     * debug toggle, repairs, raid triggers) even while holding an item such as
+     * an offhand shield. Vanilla skips block interaction entirely when sneaking
+     * with either hand occupied, which would otherwise make shift-click captures
+     * possible only with empty hands. The flag's own handlers still decide what
+     * happens, and items keep their normal behavior whenever the flag passes the
+     * interaction through.
+     */
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getEntity().isSecondaryUseActive()
+                && event.getLevel().getBlockState(event.getPos()).getBlock() instanceof BaseFlagBlock) {
+            event.setUseBlock(TriState.TRUE);
         }
     }
 
