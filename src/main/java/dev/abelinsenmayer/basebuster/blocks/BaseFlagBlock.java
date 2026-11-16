@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.DyeColor;
@@ -68,6 +69,18 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
         // Face the player on placement, same as BannerItem's standing placement
         return this.defaultBlockState()
                 .setValue(ROTATION, Mth.floor((180.0F + context.getRotation()) * 16.0F / 360.0F) % 16);
+    }
+
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        // AbstractBannerBlock applies the item's custom name to the block entity
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if (!level.isClientSide && placer instanceof Player player) {
+            BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+            if (blockEntity != null) {
+                blockEntity.setOwner(player);
+            }
+        }
     }
 
     @Override

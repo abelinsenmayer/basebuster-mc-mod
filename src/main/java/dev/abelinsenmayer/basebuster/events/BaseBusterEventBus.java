@@ -78,6 +78,40 @@ public class BaseBusterEventBus {
     }
 
     /**
+     * Keeps flag protection areas from overlapping: a new flag must sit at
+     * least two radii (2 * {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS}) from
+     * every existing flag. Cancelling also refunds the item to the placer.
+     */
+    @SubscribeEvent
+    public void onFlagPlace(BlockEvent.EntityPlaceEvent event) {
+        if (!(event.getPlacedBlock().getBlock() instanceof BaseFlagBlock)) {
+            return;
+        }
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        BlockPos pos = event.getPos();
+        int minSeparation = BaseFlagBlock.FLAG_PROTECTION_RADIUS * 2;
+        double minSeparationSqr = Math.pow(minSeparation, 2);
+        BlockPos conflict = FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
+                .filter(flagPos -> flagPos.distSqr(pos) < minSeparationSqr)
+                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(pos)))
+                .orElse(null);
+        if (conflict == null) {
+            return;
+        }
+
+        event.setCanceled(true);
+        if (event.getEntity() instanceof ServerPlayer player) {
+            player.sendSystemMessage(Component.literal(
+                    "Too close to the flag at " + conflict.getX() + " " + conflict.getY() + " " + conflict.getZ()
+                            + ": base flags must be at least " + minSeparation + " blocks apart.")
+                    .withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /**
      * Bars players from setting a respawn point (bed click, respawn anchor,
      * /spawnpoint) inside a faction-owned flag's protected area. Cancelling
      * the event also suppresses the vanilla "Respawn point set" message.
