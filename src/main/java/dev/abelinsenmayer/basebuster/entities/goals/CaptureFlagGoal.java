@@ -52,6 +52,12 @@ public class CaptureFlagGoal extends Goal {
 
     @Override
     public boolean canUse() {
+        // A raider with an enemy to fight never starts the channel; being
+        // attacked assigns a target through HurtByTargetGoal, and capture
+        // must not compete with the retaliation goals for MOVE
+        if (this.mob.getTarget() != null) {
+            return false;
+        }
         BlockPos flag = this.nearestUncapturedFlag();
         if (flag == null) {
             return false;
@@ -70,6 +76,11 @@ public class CaptureFlagGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         if (this.flagPos == null || !(this.mob.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+        // Being attacked (or otherwise acquiring a target) drops the
+        // channel; the raider can resume once the threat is dealt with
+        if (this.mob.getTarget() != null) {
             return false;
         }
         if (!(serverLevel.getBlockState(this.flagPos).getBlock() instanceof BaseFlagBlock)) {
