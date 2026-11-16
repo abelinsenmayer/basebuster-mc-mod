@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "#": {
+      "item": "minecraft:stick"
+    },
+    "S": {
+      "item": "minecraft:wooden_sword"
+    },
+    "W": {
+      "tag": "minecraft:wool"
+    }
+  },
+  "pattern": [
+    "WSW",
+    "W#W",
+    " # "
+  ],
+  "result": {
+    "count": 1,
+    "id": "basebuster:base_flag_block"
+  }
+}

@@ -14,6 +14,7 @@ import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterBlockStateProvider;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterItemModelProvider;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterLanguageProvider;
+import dev.abelinsenmayer.basebuster.providers.BaseBusterRecipeProvider;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -249,6 +250,7 @@ public class BaseBuster {
         event.createProvider(BaseBusterLanguageProvider::new);
         generator.addProvider(event.includeClient(), new BaseBusterBlockStateProvider(output, existingFileHelper));
         generator.addProvider(event.includeClient(), new BaseBusterItemModelProvider(output, existingFileHelper));
+        generator.addProvider(event.includeServer(), new BaseBusterRecipeProvider(output, event.getLookupProvider()));
     }
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call
