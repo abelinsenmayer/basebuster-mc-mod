@@ -3,6 +3,7 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -22,9 +23,9 @@ import java.util.EnumSet;
  * so the rout looks panicked.
  *
  * <p>Every {@value #DESPAWN_CHECK_INTERVAL_TICKS} ticks the raider checks whether
- * it should vanish: it despawns once it is farther than
- * {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} from the nearest flag and has no
- * line of sight to the nearest player, so fleeing stragglers don't litter the map.
+ * it should vanish: it despawns once no flag's protection radius covers it and
+ * the nearest player has no line of sight, so fleeing stragglers don't litter
+ * the map.
  */
 public class FleeGoal extends Goal {
     // A player closer than this is what the raider runs from
@@ -116,14 +117,18 @@ public class FleeGoal extends Goal {
     }
 
     /**
-     * The raider vanishes once it is outside the nearest flag's protection radius
-     * and the nearest player cannot see it.
+     * The raider vanishes once it is outside every flag's protection radius
+     * and the nearest player cannot see it. Each flag's own scaled radius
+     * applies: a distant high-level flag still shelters the raider where a
+     * nearer low-level one does not.
      */
     private void checkDespawn(ServerLevel level) {
-        BlockPos flag = this.raider.nearestFlag();
-        if (flag != null
-                && this.raider.blockPosition().distSqr(flag)
-                        <= (double) BaseFlagBlock.FLAG_PROTECTION_RADIUS * BaseFlagBlock.FLAG_PROTECTION_RADIUS) {
+        BlockPos mobPos = this.raider.blockPosition();
+        boolean covered = FlagsSavedData.getFromLevel(level).getFlagLocations().stream()
+                .filter(this.raider::isWithinRestriction)
+                .anyMatch(flagPos -> mobPos.distSqr(flagPos)
+                        <= Math.pow(BaseFlagBlock.protectionRadiusIfLoaded(level, flagPos), 2));
+        if (covered) {
             return;
         }
         Player player = level.getNearestPlayer(this.raider, PLAYER_SCAN_RANGE);

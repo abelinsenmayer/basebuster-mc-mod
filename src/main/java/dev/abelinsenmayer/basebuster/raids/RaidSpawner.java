@@ -9,8 +9,10 @@ import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderKit;
 import dev.abelinsenmayer.basebuster.entities.RaiderSkin;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
+import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
 import dev.abelinsenmayer.basebuster.pathfinding.ResumablePathSearch;
 import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
+import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -53,7 +55,7 @@ import java.util.UUID;
  *
  * <ol>
  *   <li>Sample {@link #RING_CANDIDATES} evenly spaced points on a ring at
- *   {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} + a random 1-40 block buffer,
+ *   the flag's protection radius + a random 1-40 block buffer,
  *   snapping each to a safe surface position.
  *   <li>Run one {@link ResumablePathSearch} from the flag with every candidate
  *   as a potential target, using {@link RaiderNodeEvaluator} so tunneling,
@@ -131,7 +133,7 @@ public final class RaidSpawner {
             return false;
         }
         RandomSource random = level.getRandom();
-        int distance = BaseFlagBlock.FLAG_PROTECTION_RADIUS + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
+        int distance = BaseFlagBlock.protectionRadius(level, flagPos) + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
         List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
         if (anchors.isEmpty()) {
             return false;
@@ -157,7 +159,7 @@ public final class RaidSpawner {
             return false;
         }
         BlockPos anchor = safeSpawnNear(level, spawnPos, boss);
-        if (anchor == null) {
+        if (anchor == null || closerToOtherFlag(flagPos, anchor, otherFlags(level, flagPos))) {
             return false;
         }
         int distance = Math.max(flagPos.distManhattan(anchor), 1);
@@ -394,6 +396,7 @@ public final class RaidSpawner {
      */
     private static List<BlockPos> surfaceAnchors(ServerLevel level, BlockPos flagPos, int distance, Mob probe, RandomSource random) {
         List<BlockPos> anchors = new ArrayList<>();
+        Set<BlockPos> otherFlags = otherFlags(level, flagPos);
         double startAngle = random.nextDouble() * Math.PI * 2;
         for (int i = 0; i < RING_CANDIDATES; i++) {
             double angle = startAngle + i * (Math.PI * 2 / RING_CANDIDATES);
@@ -402,13 +405,38 @@ public final class RaidSpawner {
             BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, new BlockPos(x, flagPos.getY(), z));
             for (int dy : SURFACE_Y_OFFSETS) {
                 BlockPos feet = surface.above(dy);
-                if (isSafeSpawn(level, probe, feet)) {
+                if (isSafeSpawn(level, probe, feet) && !closerToOtherFlag(flagPos, feet, otherFlags)) {
                     anchors.add(feet.immutable());
                     break;
                 }
             }
         }
         return anchors;
+    }
+
+    /**
+     * Every flag in the level except the raid's target. A spawn spot closer
+     * to one of these than to the target sits inside another base's
+     * territory, so it isn't allowed to host the party.
+     */
+    private static Set<BlockPos> otherFlags(ServerLevel level, BlockPos flagPos) {
+        Set<BlockPos> flags = new HashSet<>(FlagsSavedData.getFromLevel(level).getFlagLocations());
+        flags.remove(flagPos);
+        return flags;
+    }
+
+    /**
+     * Whether {@code pos} lies closer to a flag in {@code otherFlags} than
+     * to the raid's target flag.
+     */
+    private static boolean closerToOtherFlag(BlockPos flagPos, BlockPos pos, Set<BlockPos> otherFlags) {
+        double targetDist = pos.distSqr(flagPos);
+        for (BlockPos flag : otherFlags) {
+            if (pos.distSqr(flag) < targetDist) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -16,7 +16,7 @@ import java.util.Comparator;
 /**
  * Respawn control for faction-owned flags: a flag held by a non-player faction
  * (e.g. {@link BaseFlagBlockEntity#RAIDER_FACTION}) bars players from keeping or
- * setting a respawn point inside its {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS}.
+ * setting a respawn point inside its protection radius.
  */
 public final class FlagSpawnProtection {
     private FlagSpawnProtection() {
@@ -32,9 +32,14 @@ public final class FlagSpawnProtection {
      */
     @Nullable
     public static BlockPos controllingFlag(ServerLevel level, BlockPos pos) {
-        double radiusSqr = Math.pow(BaseFlagBlock.FLAG_PROTECTION_RADIUS, 2);
+        double maxRadiusSqr = Math.pow(BaseFlagBlock.MAX_PROTECTION_RADIUS, 2);
         return FlagsSavedData.getFromLevel(level).getFlagLocations().stream()
-                .filter(flagPos -> flagPos.distSqr(pos) <= radiusSqr)
+                // Cheap bound before any chunk-touching radius lookups
+                .filter(flagPos -> flagPos.distSqr(pos) <= maxRadiusSqr)
+                .filter(flagPos -> {
+                    double radiusSqr = Math.pow(BaseFlagBlock.protectionRadius(level, flagPos), 2);
+                    return flagPos.distSqr(pos) <= radiusSqr;
+                })
                 .filter(flagPos -> {
                     BlockEntity blockEntity = level.getBlockEntity(flagPos);
                     return blockEntity instanceof BaseFlagBlockEntity flagEntity && flagEntity.isFactionOwned();
@@ -73,7 +78,7 @@ public final class FlagSpawnProtection {
      * as any other spawn source there, e.g. a /spawnpoint command).
      */
     public static void clearSpawnsInArea(ServerLevel flagLevel, BlockPos flagPos) {
-        double radiusSqr = Math.pow(BaseFlagBlock.FLAG_PROTECTION_RADIUS, 2);
+        double radiusSqr = Math.pow(BaseFlagBlock.protectionRadius(flagLevel, flagPos), 2);
         for (ServerPlayer player : flagLevel.getServer().getPlayerList().getPlayers()) {
             BlockPos respawnPos = player.getRespawnPosition();
             if (respawnPos == null

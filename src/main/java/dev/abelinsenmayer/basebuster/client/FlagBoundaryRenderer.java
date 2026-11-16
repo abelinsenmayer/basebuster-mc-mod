@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -17,8 +18,9 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 /**
- * Debug overlay drawing {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} as a rough
- * wireframe sphere around every flag listed in {@link FlagBoundaryDebugState}.
+ * Debug overlay drawing each flag's protection radius as a rough wireframe
+ * sphere around every flag listed in {@link FlagBoundaryDebugState}. The
+ * radius scales with the flag's synced base level.
  * Toggled per flag by right-clicking the flag with a stick.
  */
 @EventBusSubscriber(modid = BaseBuster.MODID, value = Dist.CLIENT)
@@ -55,8 +57,12 @@ public final class FlagBoundaryRenderer {
         // Draw through walls: the overlay is meant to reveal the protected
         // volume even when viewed from inside a closed base
         RenderSystem.disableDepthTest();
+        Level clientLevel = Minecraft.getInstance().level;
         for (BlockPos flagPos : FlagBoundaryDebugState.enabledFlags()) {
-            drawBoundarySphere(poseStack, lines, flagPos, BaseFlagBlock.FLAG_PROTECTION_RADIUS);
+            int radius = clientLevel != null
+                    ? BaseFlagBlock.protectionRadius(clientLevel, flagPos)
+                    : BaseFlagBlock.protectionRadius(1);
+            drawBoundarySphere(poseStack, lines, flagPos, radius);
         }
         buffers.endBatch(RenderType.lines());
         RenderSystem.enableDepthTest();

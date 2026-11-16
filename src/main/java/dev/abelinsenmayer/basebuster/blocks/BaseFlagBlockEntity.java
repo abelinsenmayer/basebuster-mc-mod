@@ -66,7 +66,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     };
     public static final int MAX_BASE_LEVEL = LEVEL_REQUIREMENTS.length;
 
-    // Base level derived from victory banners within FLAG_PROTECTION_RADIUS
+    // Base level derived from victory banners within MAX_PROTECTION_RADIUS
     private int baseLevel = 1;
 
     // Progress toward a raider capture, in [0, 1)
@@ -118,6 +118,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         return baseLevel;
     }
 
+    /** This flag's protection radius, scaled to its current base level. */
+    public int getProtectionRadius() {
+        return BaseFlagBlock.protectionRadius(this.baseLevel);
+    }
+
     /**
      * Flips the client-side protection-boundary overlay and returns its new state.
      * The caller is responsible for {@code sendBlockUpdated} so clients learn of the change.
@@ -156,9 +161,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     /**
      * Recomputes this flag's base level by counting victory banners (standing and
-     * wall-mounted) inside {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS}. Called by
-     * the banners' place/remove hooks whenever one appears or disappears in range,
-     * and when the flag itself is placed.
+     * wall-mounted) inside {@link BaseFlagBlock#MAX_PROTECTION_RADIUS}. Banners
+     * are always counted at the largest radius so the level doesn't depend on the
+     * very radius it produces; the flag's own scaled radius then applies to
+     * protection checks. Called by the banners' place/remove hooks whenever one
+     * appears or disappears in range, and when the flag itself is placed.
      */
     public void recalculateLevel() {
         if (!(this.level instanceof ServerLevel serverLevel)) {
@@ -166,7 +173,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
 
         BlockPos flagPos = getBlockPos();
-        int radius = BaseFlagBlock.FLAG_PROTECTION_RADIUS;
+        int radius = BaseFlagBlock.MAX_PROTECTION_RADIUS;
         double radiusSqr = Math.pow(radius, 2);
         int[] counts = new int[VictoryBannerBlock.MAX_TIER];
         for (BlockPos pos : BlockPos.betweenClosed(

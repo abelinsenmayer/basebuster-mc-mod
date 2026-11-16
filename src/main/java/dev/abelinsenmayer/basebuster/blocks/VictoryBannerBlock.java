@@ -85,7 +85,7 @@ public class VictoryBannerBlock extends BannerBlock {
     }
 
     /**
-     * Asks every flag within {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} of
+     * Asks every flag within {@link BaseFlagBlock#MAX_PROTECTION_RADIUS} of
      * {@code pos} to recompute its base level. Called after a victory banner is
      * placed or removed; because the world state is already updated when the
      * hooks run, the flags' scans see the banner's final presence/absence.
@@ -94,7 +94,7 @@ public class VictoryBannerBlock extends BannerBlock {
         if (!(level instanceof ServerLevel serverLevel)) {
             return;
         }
-        double radiusSqr = Math.pow(BaseFlagBlock.FLAG_PROTECTION_RADIUS, 2);
+        double radiusSqr = Math.pow(BaseFlagBlock.MAX_PROTECTION_RADIUS, 2);
         FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
                 .filter(flagPos -> flagPos.distSqr(pos) <= radiusSqr)
                 .forEach(flagPos -> {

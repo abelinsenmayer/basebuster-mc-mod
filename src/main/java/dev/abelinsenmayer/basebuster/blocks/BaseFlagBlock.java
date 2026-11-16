@@ -20,6 +20,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Tier;
 import net.minecraft.world.item.Tiers;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BannerBlock;
@@ -36,9 +37,39 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 
 public class BaseFlagBlock extends BannerBlock implements EntityBlock {
-    public static final int FLAG_PROTECTION_RADIUS = 120;
+    // Protection radius per base level (see BaseFlagBlockEntity#LEVEL_REQUIREMENTS);
+    // levels beyond the table clamp to the last entry
+    private static final int[] PROTECTION_RADII = {16, 32, 48, 64, 128};
+    // Largest radius a flag can reach; used as the scan bound wherever any flag's
+    // sphere could apply (banner level scans, candidate prefilters)
+    public static final int MAX_PROTECTION_RADIUS = PROTECTION_RADII[PROTECTION_RADII.length - 1];
     // True once raiders capture the flag; renders as a red banner instead of black
     public static final BooleanProperty CAPTURED = BooleanProperty.create("captured");
+
+    /** The protection radius for a base level (1-5, clamped). */
+    public static int protectionRadius(int baseLevel) {
+        return PROTECTION_RADII[Math.clamp(baseLevel, 1, PROTECTION_RADII.length) - 1];
+    }
+
+    /**
+     * The protection radius of the flag at {@code flagPos}, or the level-1 radius
+     * when no flag block entity is present there. May load the flag's chunk.
+     */
+    public static int protectionRadius(BlockGetter level, BlockPos flagPos) {
+        if (level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity) {
+            return flagEntity.getProtectionRadius();
+        }
+        return protectionRadius(1);
+    }
+
+    /**
+     * {@link #protectionRadius(BlockGetter, BlockPos)} variant that never loads
+     * the flag's chunk; flags in unloaded chunks count as level 1. For callers
+     * (e.g. entity goals) that check flags potentially far from themselves.
+     */
+    public static int protectionRadiusIfLoaded(Level level, BlockPos flagPos) {
+        return level.hasChunkAt(flagPos) ? protectionRadius(level, flagPos) : protectionRadius(1);
+    }
 
     public BaseFlagBlock(Properties properties) {
         super(

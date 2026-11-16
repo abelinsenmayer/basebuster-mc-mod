@@ -79,8 +79,9 @@ public class BaseBusterEventBus {
 
     /**
      * Keeps flag protection areas from overlapping: a new flag must sit at
-     * least two radii (2 * {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS}) from
-     * every existing flag. Cancelling also refunds the item to the placer.
+     * least the sum of both flags' radii from every existing flag. The new
+     * flag always places at level 1, so its radius is the smallest entry.
+     * Cancelling also refunds the item to the placer.
      */
     @SubscribeEvent
     public void onFlagPlace(BlockEvent.EntityPlaceEvent event) {
@@ -92,16 +93,19 @@ public class BaseBusterEventBus {
         }
 
         BlockPos pos = event.getPos();
-        int minSeparation = BaseFlagBlock.FLAG_PROTECTION_RADIUS * 2;
-        double minSeparationSqr = Math.pow(minSeparation, 2);
+        int newFlagRadius = BaseFlagBlock.protectionRadius(1);
         BlockPos conflict = FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
-                .filter(flagPos -> flagPos.distSqr(pos) < minSeparationSqr)
+                .filter(flagPos -> {
+                    double separation = BaseFlagBlock.protectionRadius(serverLevel, flagPos) + newFlagRadius;
+                    return flagPos.distSqr(pos) < separation * separation;
+                })
                 .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(pos)))
                 .orElse(null);
         if (conflict == null) {
             return;
         }
 
+        int minSeparation = BaseFlagBlock.protectionRadius(serverLevel, conflict) + newFlagRadius;
         event.setCanceled(true);
         if (event.getEntity() instanceof ServerPlayer player) {
             player.sendSystemMessage(Component.literal(
@@ -209,10 +213,17 @@ public class BaseBusterEventBus {
         FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
         Set<BlockPos> flagLocations = flagsSavedData.getFlagLocations();
 
+        // The flag that handles the grief report is the nearest one whose own
+        // radius reaches the broken block; a farther higher-level flag can
+        // cover a spot a nearer lower-level flag cannot
+        double maxRadiusSqr = Math.pow(BaseFlagBlock.MAX_PROTECTION_RADIUS, 2);
         BlockPos nearestFlag = flagLocations.stream()
+                .filter(flagPos -> flagPos.distSqr(pos) <= maxRadiusSqr)
+                .filter(flagPos -> flagPos.distSqr(pos)
+                        <= Math.pow(BaseFlagBlock.protectionRadius(serverLevel, flagPos), 2))
                 .min(Comparator.comparingDouble(flagLocation -> flagLocation.distSqr(pos)))
                 .orElse(null);
-        if (nearestFlag == null || nearestFlag.distSqr(pos) > Math.pow(BaseFlagBlock.FLAG_PROTECTION_RADIUS, 2)) {
+        if (nearestFlag == null) {
             return false;
         }
 

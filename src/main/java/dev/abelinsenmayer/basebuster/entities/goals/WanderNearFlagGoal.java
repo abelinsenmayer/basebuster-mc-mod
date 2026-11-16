@@ -16,8 +16,8 @@ import java.util.EnumSet;
 /**
  * Loitering behavior for raiders standing in the protected area of a flag their
  * faction already owns. Instead of pathing toward the flag itself, the raider
- * picks random spots inside {@link BaseFlagBlock#FLAG_PROTECTION_RADIUS} of it
- * and strolls between them.
+ * picks random spots inside the flag's protection radius and strolls between
+ * them.
  */
 public class WanderNearFlagGoal extends Goal {
     // Ticks between picking a new wander target
@@ -50,8 +50,8 @@ public class WanderNearFlagGoal extends Goal {
         }
 
         // The raider only loiters when already inside the flag's protection area
-        if (this.mob.blockPosition().distSqr(flag)
-                > (double) BaseFlagBlock.FLAG_PROTECTION_RADIUS * BaseFlagBlock.FLAG_PROTECTION_RADIUS) {
+        double radius = BaseFlagBlock.protectionRadiusIfLoaded(this.mob.level(), flag);
+        if (this.mob.blockPosition().distSqr(flag) > radius * radius) {
             return false;
         }
 
@@ -111,7 +111,7 @@ public class WanderNearFlagGoal extends Goal {
         // raider keeps patrolling the captured base instead of drifting away
         Vec3 flagCenter = Vec3.atCenterOf(flag);
         Vec3 offset = random.subtract(flagCenter);
-        double radius = BaseFlagBlock.FLAG_PROTECTION_RADIUS;
+        double radius = BaseFlagBlock.protectionRadiusIfLoaded(this.mob.level(), flag);
         if (offset.length() > radius) {
             random = flagCenter.add(offset.normalize().scale(radius - 1.0));
         }
