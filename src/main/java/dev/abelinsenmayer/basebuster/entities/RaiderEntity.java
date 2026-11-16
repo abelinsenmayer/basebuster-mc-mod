@@ -1,17 +1,9 @@
 package dev.abelinsenmayer.basebuster.entities;
 
-import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
-import dev.abelinsenmayer.basebuster.entities.goals.CaptureFlagGoal;
-import dev.abelinsenmayer.basebuster.entities.goals.FleeGoal;
-import dev.abelinsenmayer.basebuster.entities.goals.FollowSquadPathGoal;
-import dev.abelinsenmayer.basebuster.entities.goals.JoinSquadGoal;
-import dev.abelinsenmayer.basebuster.entities.goals.MoveToFlagGoal;
-import dev.abelinsenmayer.basebuster.entities.goals.WanderNearFlagGoal;
+import dev.abelinsenmayer.basebuster.entities.goals.RaiderGoals;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNavigation;
-import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
-import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -25,19 +17,17 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.ai.goal.GoalSelector;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveThroughVillageGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
-import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -59,18 +49,13 @@ import net.minecraft.world.level.storage.loot.LootTable;
 import net.neoforged.neoforge.fluids.FluidType;
 
 import javax.annotation.Nullable;
-import java.util.Comparator;
-import java.util.List;
-import java.util.stream.Collectors;
 
-public class RaiderEntity extends Zombie implements RangedAttackMob {
+public class RaiderEntity extends Zombie implements RangedAttackMob, IRaider {
     // -1 = no explicit skin; getSkin() falls back to the generic zombie
     private static final int UNSET_SKIN_ID = -1;
     private static final EntityDataAccessor<Integer> DATA_SKIN_ID =
             SynchedEntityData.defineId(RaiderEntity.class, EntityDataSerializers.INT);
     private static final String SKIN_TAG = "RaiderSkin";
-    private static final String KIT_TAG = "RaiderKit";
-    private static final String RAID_TIER_TAG = "RaidTier";
     private static final int BOW_ATTACK_INTERVAL_TICKS = 20;
     private static final float BOW_ATTACK_RADIUS = 40.0F;
     // Vanilla skeletons fire at 1.6 blocks/tick over a 15-block range. Launch
@@ -88,19 +73,10 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
     // footing since they walk the bottom rather than swim.
     private static final double SWIM_MOVEMENT_EFFICIENCY = 0.5;
 
-    @Nullable
-    private RaiderBossEntity squadLeader;
-    // Null until finalizeSpawn assigns one; getKit() falls back to a
-    // UUID-derived kit so goal checks never see null
-    @Nullable
-    private RaiderKit kit;
-    // The tier of the raid this raider spawned in, which scales its kit's
-    // gear quality. Tier 1 (the weakest loadout) for egg/summon spawns,
-    // which aren't part of a raid
-    private int raidTier = 1;
-    // Last tick's running goals; diffed each server AI tick to log transitions
-    private List<Goal> runningGoals = List.of();
-    private List<Goal> runningTargetGoals = List.of();
+    // The composed raider state (kit, tier, squad membership, goal logging);
+    // the IRaider contract forwards here so any PathfinderMob subclass can
+    // carry the same behavior
+    private final RaiderComponent raider = new RaiderComponent(this);
 
     public RaiderEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -140,9 +116,6 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
                 return !RaiderEntity.this.sinksInWater() && super.canUse();
             }
         });
-        // Execution goals
-        // Leaderless raiders on an assault get cold feet before anything else
-        this.goalSelector.addGoal(2, new FleeGoal(this));
         // Melee and bow goals share a priority; the kit decides which may run.
         // A bowman without its bow falls back to the melee goal, mirroring
         // vanilla's reassessWeaponGoal behavior.
@@ -168,17 +141,10 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
                 return RaiderEntity.this.getKit().isRanged() && super.canContinueToUse();
             }
         });
-        // Squad election uses no goal flags, so it can fire alongside anything
-        // (including mid-flee) and end the retreat as soon as a boss shows up
-        this.goalSelector.addGoal(3, new JoinSquadGoal(this));
-        // Capturing is the raider's highest priority after combat
-        this.goalSelector.addGoal(4, new CaptureFlagGoal(this));
-        // Shares priority 4 so it can preempt MoveToFlagGoal immediately on
-        // spawn; CaptureFlagGoal is registered first and wins ties near the
-        // flag, where FollowSquadPathGoal's handoff gate keeps it idle anyway
-        this.goalSelector.addGoal(4, new FollowSquadPathGoal(this, 1.0));
-        this.goalSelector.addGoal(5, new MoveToFlagGoal(this, 1.0));
-        this.goalSelector.addGoal(6, new WanderNearFlagGoal(this, 1.0));
+        // The shared raider layer (flee/squad/capture/march/wander at
+        // priorities 2-6) is identical across raider species; illager hosts
+        // install the same goals over their native combat table
+        RaiderGoals.install(this);
         this.goalSelector.addGoal(7, new MoveThroughVillageGoal(this, 1.0, true, 4, this::canBreakDoors));
         this.goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0));
         this.goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 8.0F));
@@ -191,50 +157,12 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, IronGolem.class, true));
     }
 
-    // GoalSelector exposes no per-goal callbacks, so sample the running set
-    // after each AI tick and log the diff -- that diff is what "switching
-    // goals" means for a raider. Runs server-side only, where the AI lives.
     @Override
     public void tick() {
         super.tick();
         if (Config.RAIDER_GOAL_SWITCH_LOGGING.getAsBoolean() && !this.level().isClientSide) {
-            this.logGoalTransitions();
+            this.raider.logGoalTransitions(this.goalSelector, this.targetSelector);
         }
-    }
-
-    private void logGoalTransitions() {
-        List<Goal> goals = runningGoalsOf(this.goalSelector);
-        List<Goal> targetGoals = runningGoalsOf(this.targetSelector);
-        // Goal has no value equality, so List.equals compares by identity --
-        // which is exactly what a start/stop transition means here
-        if (!goals.equals(this.runningGoals)) {
-            BaseBuster.LOGGER.info("Raider {} goals: {} -> {}",
-                    this.getId(), describeGoals(this.runningGoals), describeGoals(goals));
-            this.runningGoals = goals;
-        }
-        if (!targetGoals.equals(this.runningTargetGoals)) {
-            BaseBuster.LOGGER.info("Raider {} target goals: {} -> {}",
-                    this.getId(), describeGoals(this.runningTargetGoals), describeGoals(targetGoals));
-            this.runningTargetGoals = targetGoals;
-        }
-    }
-
-    private static List<Goal> runningGoalsOf(GoalSelector selector) {
-        return selector.getAvailableGoals().stream()
-                .filter(WrappedGoal::isRunning)
-                .map(WrappedGoal::getGoal)
-                .toList();
-    }
-
-    private static String describeGoals(List<Goal> goals) {
-        return goals.stream().map(RaiderEntity::goalName).collect(Collectors.joining(", ", "[", "]"));
-    }
-
-    private static String goalName(Goal goal) {
-        Class<?> cls = goal.getClass();
-        // Anonymous overrides registered in registerGoals (e.g. the kit-gated
-        // FloatGoal) have no simple name; report the vanilla superclass instead
-        return cls.isAnonymousClass() ? cls.getSuperclass().getSimpleName() : cls.getSimpleName();
     }
 
     @Override
@@ -292,26 +220,17 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         return false;
     }
 
-    // Raiders are on the same faction: any attack sourced from a raider —
-    // melee or a stray arrow (getEntity() resolves to the shooter) — deals no
-    // damage, which also keeps HurtByTargetGoal from triggering infighting.
-    @Override
-    public boolean hurt(DamageSource source, float amount) {
-        if (source.getEntity() instanceof RaiderEntity) {
-            return false;
-        }
-        return super.hurt(source, amount);
-    }
+    // Faction-friendly damage (raiders can't hurt raiders, including stray
+    // arrows) lives in BaseBusterEventBus's LivingIncomingDamageEvent handler,
+    // so it works across every IRaider species without a per-class override.
 
     @Override
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, @Nullable SpawnGroupData spawnGroupData) {
-        if (this.kit == null) {
-            this.kit = RaiderKit.random(this.getRandom());
-        }
+        this.raider.ensureKit(this.getRandom());
         // super may randomize equipment via populateDefaultEquipmentSlots;
         // run the kit afterward so its gear always wins
         SpawnGroupData result = super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
-        this.kit.equip(this, this.getRandom());
+        this.getKit().equip(this, this.getRaidTier(), this.getRandom());
         AttributeInstance maxHealth = this.getAttribute(Attributes.MAX_HEALTH);
         if (maxHealth != null) {
             maxHealth.setBaseValue(this.getConfiguredMaxHealth());
@@ -386,21 +305,26 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.level().addFreshEntity(arrow);
     }
 
+    @Override
+    public PathfinderMob mob() {
+        return this;
+    }
+
     // Whether this raider type participates in squads; bosses lead, never join
+    @Override
     public boolean canJoinSquad() {
         return true;
     }
 
+    @Override
     @Nullable
-    public RaiderBossEntity getSquadLeader() {
-        if (this.squadLeader != null && this.squadLeader.isRemoved()) {
-            this.squadLeader = null;
-        }
-        return this.squadLeader;
+    public IRaiderBoss getSquadLeader() {
+        return this.raider.getSquadLeader();
     }
 
-    public void setSquadLeader(@Nullable RaiderBossEntity squadLeader) {
-        this.squadLeader = squadLeader;
+    @Override
+    public void setSquadLeader(@Nullable IRaiderBoss squadLeader) {
+        this.raider.setSquadLeader(squadLeader);
     }
 
     /**
@@ -419,43 +343,31 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         this.entityData.set(DATA_SKIN_ID, skin.ordinal());
     }
 
-    /**
-     * This raider's combat kit: equipment, stats, and attack style. Falls back
-     * to a deterministic UUID-derived kit for entities that never went through
-     * finalizeSpawn, so goal checks always have an answer.
-     */
+    @Override
     public RaiderKit getKit() {
-        RaiderKit kit = this.kit;
-        return kit != null ? kit : RaiderKit.forUuid(this.getUUID());
+        return this.raider.getKit();
     }
 
-    /** Pins this raider to a specific kit. Must be called before finalizeSpawn
-     *  if the kit's equipment should also be applied. */
+    @Override
     public void setKit(RaiderKit kit) {
-        this.kit = kit;
+        this.raider.setKit(kit);
     }
 
-    /**
-     * The tier of the raid this raider spawned in. Kits read it during
-     * {@link RaiderKit#equip} to pick their gear; bosses also use it to pick
-     * the victory banner the raid drops.
-     */
+    @Override
     public int getRaidTier() {
-        return this.raidTier;
+        return this.raider.getRaidTier();
     }
 
-    /** Tags this raider with its raid's tier; RaidSpawner sets it before
-     *  finalizeSpawn so the kit equips the tier's loadout. */
+    @Override
     public void setRaidTier(int raidTier) {
-        this.raidTier = raidTier;
+        this.raider.setRaidTier(raidTier);
     }
 
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString(SKIN_TAG, this.getSkin().name());
-        tag.putString(KIT_TAG, this.getKit().name());
-        tag.putInt(RAID_TIER_TAG, this.raidTier);
+        this.raider.save(tag);
     }
 
     @Override
@@ -468,16 +380,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
                 // Unknown skin name (e.g. from an older save); fall back to the default
             }
         }
-        if (tag.contains(KIT_TAG, Tag.TAG_STRING)) {
-            try {
-                this.kit = RaiderKit.valueOf(tag.getString(KIT_TAG));
-            } catch (IllegalArgumentException ignored) {
-                // Unknown kit name (e.g. from an older save); fall back to the default
-            }
-        }
-        if (tag.contains(RAID_TIER_TAG)) {
-            this.raidTier = tag.getInt(RAID_TIER_TAG);
-        }
+        this.raider.load(tag);
     }
 
     // Checked every frame; honors live config changes without needing a
@@ -493,41 +396,7 @@ public class RaiderEntity extends Zombie implements RangedAttackMob {
         return Config.RAIDER_GLOWING.get();
     }
 
-    /**
-     * Whether the raider is on an assault: a flag not owned by the raider
-     * faction exists for it to march on. Raiders guarding an already-captured
-     * flag are not assaulting, so they never join squads or flee.
-     */
-    public boolean isAttemptingCapture() {
-        return this.nearestUncapturedFlag() != null;
-    }
-
-    /** The closest registered flag not owned by the raider faction. */
-    @Nullable
-    public BlockPos nearestUncapturedFlag() {
-        if (!(this.level() instanceof ServerLevel serverLevel)) {
-            return null;
-        }
-        FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
-        BlockPos mobPos = this.blockPosition();
-        return flagsSavedData.getFlagLocations().stream()
-                .filter(flagPos -> !flagsSavedData.getCapturedFlagLocations().contains(flagPos))
-                .filter(this::isWithinRestriction)
-                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(mobPos)))
-                .orElse(null);
-    }
-
-    /** The closest registered flag, regardless of ownership. */
-    @Nullable
-    public BlockPos nearestFlag() {
-        if (!(this.level() instanceof ServerLevel serverLevel)) {
-            return null;
-        }
-        FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
-        BlockPos mobPos = this.blockPosition();
-        return flagsSavedData.getFlagLocations().stream()
-                .filter(this::isWithinRestriction)
-                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(mobPos)))
-                .orElse(null);
-    }
+    // Flag queries (isAttemptingCapture, nearestUncapturedFlag, nearestFlag)
+    // come from IRaider's defaults -- they only read FlagsSavedData and the
+    // host's position, so every raider species shares them.
 }

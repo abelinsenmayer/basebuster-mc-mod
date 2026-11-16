@@ -2,10 +2,11 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
-import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.player.Player;
@@ -27,7 +28,7 @@ import java.util.EnumSet;
  * the nearest player has no line of sight, so fleeing stragglers don't litter
  * the map.
  */
-public class FleeGoal extends Goal {
+public class FleeGoal<T extends PathfinderMob & IRaider> extends Goal {
     // A player closer than this is what the raider runs from
     private static final int PLAYER_FLEE_RADIUS = 12;
     // Nearest-player search range for the despawn line-of-sight check
@@ -42,11 +43,11 @@ public class FleeGoal extends Goal {
     // Ticks between despawn eligibility checks
     private static final int DESPAWN_CHECK_INTERVAL_TICKS = 40;
 
-    private final RaiderEntity raider;
+    private final T raider;
     private int repathTimestamp;
     private int despawnCheckTimestamp;
 
-    public FleeGoal(RaiderEntity raider) {
+    public FleeGoal(T raider) {
         this.raider = raider;
         this.setFlags(EnumSet.of(Goal.Flag.MOVE));
     }

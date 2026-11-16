@@ -1,8 +1,8 @@
 package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.Config;
-import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
-import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
+import dev.abelinsenmayer.basebuster.entities.IRaiderBoss;
 import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.PathfinderMob;
@@ -48,7 +48,7 @@ public class FollowSquadPathGoal extends MoveToFlagGoal {
     @Override
     protected boolean findNearestBlock() {
         if (!Config.RAIDER_SQUAD_PATHING_ENABLED.get()
-                || !(this.mob instanceof RaiderEntity raider)) {
+                || !(this.mob instanceof IRaider raider)) {
             return false;
         }
         BlockPos flag = raider.nearestUncapturedFlag();
@@ -58,7 +58,7 @@ public class FollowSquadPathGoal extends MoveToFlagGoal {
         // The boss marches on its own plan; members march on their leader's.
         // The stored list is an immutable snapshot, so adopting it survives
         // the planner's death or later refreshes.
-        RaiderBossEntity planner = raider instanceof RaiderBossEntity boss
+        IRaiderBoss planner = raider instanceof IRaiderBoss boss
                 ? boss
                 : raider.getSquadLeader();
         if (planner == null

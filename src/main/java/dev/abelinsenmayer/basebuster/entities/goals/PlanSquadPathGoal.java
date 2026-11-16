@@ -1,11 +1,12 @@
 package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.Config;
-import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaiderBoss;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 
 import javax.annotation.Nullable;
@@ -23,23 +24,22 @@ import javax.annotation.Nullable;
  * submits work; it declares no {@link Goal.Flag}s and returns to idle while
  * the search runs -- the same pattern as {@link JoinSquadGoal}.
  *
- * <p><b>Currently dormant</b>: not registered in
- * {@link RaiderBossEntity#registerGoals} -- squad routes are assigned at raid
- * spawn only and bosses never re-plan on their own; the world-load case is
- * covered by the boss's own persistence/tick restart instead. Kept for
- * future periodic re-planning.
+ * <p><b>Currently dormant</b>: not registered in any boss's
+ * registerGoals -- squad routes are assigned at raid spawn only and bosses
+ * never re-plan on their own; the world-load case is covered by the boss's
+ * own persistence/tick restart instead. Kept for future periodic re-planning.
  */
-public class PlanSquadPathGoal extends Goal {
+public class PlanSquadPathGoal<B extends PathfinderMob & IRaiderBoss> extends Goal {
     // Random spread on the refresh interval so multi-boss raids don't run
     // their expensive searches on the same tick
     private static final int REFRESH_JITTER_TICKS = 100;
 
-    private final RaiderBossEntity boss;
+    private final B boss;
     private int cooldown;
     @Nullable
     private BlockPos plannedFor;
 
-    public PlanSquadPathGoal(RaiderBossEntity boss) {
+    public PlanSquadPathGoal(B boss) {
         this.boss = boss;
     }
 

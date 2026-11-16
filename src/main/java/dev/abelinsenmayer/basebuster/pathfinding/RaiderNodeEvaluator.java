@@ -1,7 +1,6 @@
 package dev.abelinsenmayer.basebuster.pathfinding;
 
 import dev.abelinsenmayer.basebuster.Config;
-import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -124,7 +123,6 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     @Override
     public boolean canFloat() {
         return true;
-//        return super.canFloat() && !(this.mob instanceof RaiderEntity raider && raider.sinksInWater());
     }
 
     @Override

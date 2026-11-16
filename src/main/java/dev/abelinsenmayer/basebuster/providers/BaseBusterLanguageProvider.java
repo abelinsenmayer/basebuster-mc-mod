@@ -37,6 +37,16 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.addItem(BaseBuster.RAIDER_SPAWN_EGG, "Raider Spawn Egg");
         this.addEntityType(BaseBuster.RAIDER_BOSS, "Raider Boss");
         this.addItem(BaseBuster.RAIDER_BOSS_SPAWN_EGG, "Raider Boss Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_VINDICATOR, "Vindicator Raider");
+        this.addItem(BaseBuster.RAIDER_VINDICATOR_SPAWN_EGG, "Vindicator Raider Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_PILLAGER, "Pillager Raider");
+        this.addItem(BaseBuster.RAIDER_PILLAGER_SPAWN_EGG, "Pillager Raider Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_EVOKER, "Evoker Raider");
+        this.addItem(BaseBuster.RAIDER_EVOKER_SPAWN_EGG, "Evoker Raider Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_RAVAGER, "Ravager Raider");
+        this.addItem(BaseBuster.RAIDER_RAVAGER_SPAWN_EGG, "Ravager Raider Spawn Egg");
+        this.addEntityType(BaseBuster.RAIDER_RAVAGER_BOSS, "Ravager Raider Boss");
+        this.addItem(BaseBuster.RAIDER_RAVAGER_BOSS_SPAWN_EGG, "Ravager Raider Boss Spawn Egg");
         this.addItem(BaseBuster.RAID_SPAWNER, "Raid Spawner");
         // Banner items delegate their description id to the standing block
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER1, "Victory Banner (Tier 1)");

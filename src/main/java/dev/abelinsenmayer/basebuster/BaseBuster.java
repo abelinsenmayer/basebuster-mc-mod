@@ -8,6 +8,11 @@ import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.blocks.VictoryWallBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderEvokerEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderPillagerEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderRavagerBossEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderRavagerEntity;
+import dev.abelinsenmayer.basebuster.entities.RaiderVindicatorEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.items.RaidSpawnerItem;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
@@ -29,6 +34,10 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.monster.Evoker;
+import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.Ravager;
+import net.minecraft.world.entity.monster.Vindicator;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.BlockItem;
@@ -152,6 +161,56 @@ public class BaseBuster {
     public static final DeferredItem<DeferredSpawnEggItem> RAIDER_BOSS_SPAWN_EGG = ITEMS.register("raider_boss_spawn_egg",
             () -> new DeferredSpawnEggItem(RAIDER_BOSS, 0x6B5637, 0x3E2F1E, new Item.Properties()));
 
+    // Illager raiders: vanilla illager hosts carrying the shared raider layer
+    // (squad + flag goals). Egg colors echo each species' vanilla spawn egg.
+    public static final Supplier<EntityType<RaiderVindicatorEntity>> RAIDER_VINDICATOR = ENTITY_TYPES.register("raider_vindicator",
+            () -> EntityType.Builder.of(RaiderVindicatorEntity::new, MobCategory.MONSTER)
+                    .sized(0.6F, 1.95F)
+                    .eyeHeight(1.74F)
+                    .clientTrackingRange(8)
+                    .build("raider_vindicator"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_VINDICATOR_SPAWN_EGG = ITEMS.register("raider_vindicator_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_VINDICATOR, 0x957959, 0x275B51, new Item.Properties()));
+
+    public static final Supplier<EntityType<RaiderPillagerEntity>> RAIDER_PILLAGER = ENTITY_TYPES.register("raider_pillager",
+            () -> EntityType.Builder.of(RaiderPillagerEntity::new, MobCategory.MONSTER)
+                    .sized(0.6F, 1.95F)
+                    .eyeHeight(1.74F)
+                    .clientTrackingRange(8)
+                    .build("raider_pillager"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_PILLAGER_SPAWN_EGG = ITEMS.register("raider_pillager_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_PILLAGER, 0x532F36, 0x8B3E2C, new Item.Properties()));
+
+    public static final Supplier<EntityType<RaiderEvokerEntity>> RAIDER_EVOKER = ENTITY_TYPES.register("raider_evoker",
+            () -> EntityType.Builder.of(RaiderEvokerEntity::new, MobCategory.MONSTER)
+                    .sized(0.6F, 1.95F)
+                    .eyeHeight(1.74F)
+                    .clientTrackingRange(8)
+                    .build("raider_evoker"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_EVOKER_SPAWN_EGG = ITEMS.register("raider_evoker_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_EVOKER, 0x1E1B1A, 0x4A4945, new Item.Properties()));
+
+    public static final Supplier<EntityType<RaiderRavagerEntity>> RAIDER_RAVAGER = ENTITY_TYPES.register("raider_ravager",
+            () -> EntityType.Builder.of(RaiderRavagerEntity::new, MobCategory.MONSTER)
+                    .sized(1.95F, 2.2F)
+                    .eyeHeight(2.08F)
+                    .clientTrackingRange(8)
+                    .build("raider_ravager"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_RAVAGER_SPAWN_EGG = ITEMS.register("raider_ravager_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_RAVAGER, 0x757470, 0x5B5049, new Item.Properties()));
+
+    // The illager raid leader: a ravager scaled up like the zombie boss, with
+    // bonus health on top of the ravager's native 100. Dimensions are the
+    // base ravager size; the entity applies the SCALE attribute itself.
+    public static final Supplier<EntityType<RaiderRavagerBossEntity>> RAIDER_RAVAGER_BOSS = ENTITY_TYPES.register("raider_ravager_boss",
+            () -> EntityType.Builder.of(RaiderRavagerBossEntity::new, MobCategory.MONSTER)
+                    .sized(1.95F, 2.2F)
+                    .eyeHeight(2.08F)
+                    .clientTrackingRange(8)
+                    .build("raider_ravager_boss"));
+    public static final DeferredItem<DeferredSpawnEggItem> RAIDER_RAVAGER_BOSS_SPAWN_EGG = ITEMS.register("raider_ravager_boss_spawn_egg",
+            () -> new DeferredSpawnEggItem(RAIDER_RAVAGER_BOSS, 0x5B5049, 0x3A3430, new Item.Properties()));
+
     // The mod's creative tab, placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> BASEBUSTER_TAB = CREATIVE_MODE_TABS.register("basebuster_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.basebuster")) //The language key for the title of your CreativeModeTab
@@ -164,6 +223,11 @@ public class BaseBuster {
                 output.accept(DIAMOND_REPAIR_HAMMER.get());
                 output.accept(RAIDER_SPAWN_EGG.get());
                 output.accept(RAIDER_BOSS_SPAWN_EGG.get());
+                output.accept(RAIDER_VINDICATOR_SPAWN_EGG.get());
+                output.accept(RAIDER_PILLAGER_SPAWN_EGG.get());
+                output.accept(RAIDER_EVOKER_SPAWN_EGG.get());
+                output.accept(RAIDER_RAVAGER_SPAWN_EGG.get());
+                output.accept(RAIDER_RAVAGER_BOSS_SPAWN_EGG.get());
                 output.accept(RAID_SPAWNER.get());
                 output.accept(VICTORY_BANNER_TIER1_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER2_ITEM.get());
@@ -238,10 +302,16 @@ public class BaseBuster {
                 VICTORY_BANNER_TIER5.get(), VICTORY_WALL_BANNER_TIER5.get());
     }
 
-    // Give raiders the same attributes as a zombie; configured max health is applied at spawn time
+    // Give raiders the same attributes as a zombie; configured max health is applied at spawn time.
+    // Illager raiders reuse their species' own attribute factories.
     private void onRegisterEntityAttributes(EntityAttributeCreationEvent event) {
         event.put(RAIDER.get(), Zombie.createAttributes().build());
         event.put(RAIDER_BOSS.get(), Zombie.createAttributes().build());
+        event.put(RAIDER_VINDICATOR.get(), Vindicator.createAttributes().build());
+        event.put(RAIDER_PILLAGER.get(), Pillager.createAttributes().build());
+        event.put(RAIDER_EVOKER.get(), Evoker.createAttributes().build());
+        event.put(RAIDER_RAVAGER.get(), Ravager.createAttributes().build());
+        event.put(RAIDER_RAVAGER_BOSS.get(), Ravager.createAttributes().build());
     }
 
     public void onGatherData(GatherDataEvent event) {

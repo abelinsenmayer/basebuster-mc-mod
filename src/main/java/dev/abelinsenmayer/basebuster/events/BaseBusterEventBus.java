@@ -4,6 +4,7 @@ import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
@@ -46,6 +48,21 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         PathSearchScheduler.onServerStopping();
+    }
+
+    /**
+     * Same-faction immunity: any damage sourced from a raider -- melee or a
+     * stray arrow (getEntity() resolves to the shooter) -- deals no damage to
+     * another raider, which also keeps HurtByTargetGoal from triggering
+     * infighting. Event-level (not a hurt override) so it covers every
+     * {@link IRaider} species and cross-species hits uniformly.
+     */
+    @SubscribeEvent
+    public void onRaiderFriendlyFire(LivingIncomingDamageEvent event) {
+        if (event.getEntity() instanceof IRaider
+                && event.getSource().getEntity() instanceof IRaider) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent

@@ -6,6 +6,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -20,9 +21,9 @@ import java.util.UUID;
  * Kit data lives server-side; equipment slots are synced by vanilla, so the
  * client needs nothing extra.
  *
- * <p>Gear scales with {@link RaiderEntity#getRaidTier()}: each kit reads the
- * raider's tier inside {@link #equip} and hands out a stronger loadout at
- * higher tiers (noted per kit). Raiders spawned outside a raid stay at tier 1.
+ * <p>Gear scales with the raid tier passed to {@link #equip}: each kit hands
+ * out a stronger loadout at higher tiers (noted per kit). Raiders spawned
+ * outside a raid stay at tier 1.
  */
 public enum RaiderKit {
     /**
@@ -33,23 +34,22 @@ public enum RaiderKit {
      */
     SWORD_AND_BOARD(18.0, 0.30, false, 0.0) {
         @Override
-        public void equip(RaiderEntity raider, RandomSource random) {
-            int tier = raider.getRaidTier();
+        public void equip(PathfinderMob mob, int tier, RandomSource random) {
             ItemStack sword = new ItemStack(tier >= 3
                     ? Items.DIAMOND_SWORD
                     : random.nextBoolean() ? Items.STONE_SWORD : Items.IRON_SWORD);
             if (tier >= 5) {
-                enchant(raider, sword, Enchantments.SHARPNESS, 3);
+                enchant(mob, sword, Enchantments.SHARPNESS, 3);
             } else if (tier >= 4) {
-                enchant(raider, sword, Enchantments.SHARPNESS, 1);
+                enchant(mob, sword, Enchantments.SHARPNESS, 1);
             }
-            raider.setItemSlot(EquipmentSlot.MAINHAND, sword);
-            raider.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+            mob.setItemSlot(EquipmentSlot.MAINHAND, sword);
+            mob.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
             if (tier >= 4) {
-                equipArmor(raider, Items.IRON_HELMET, Items.IRON_CHESTPLATE,
+                equipArmor(mob, Items.IRON_HELMET, Items.IRON_CHESTPLATE,
                         Items.IRON_LEGGINGS, Items.IRON_BOOTS);
             } else if (tier >= 2) {
-                equipArmor(raider, Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE,
+                equipArmor(mob, Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE,
                         Items.LEATHER_LEGGINGS, Items.LEATHER_BOOTS);
             }
         }
@@ -61,18 +61,17 @@ public enum RaiderKit {
      */
     BOWMAN(14.0, 0.26, true, 0.0) {
         @Override
-        public void equip(RaiderEntity raider, RandomSource random) {
-            int tier = raider.getRaidTier();
+        public void equip(PathfinderMob mob, int tier, RandomSource random) {
             ItemStack bow = new ItemStack(Items.BOW);
             if (tier >= 3) {
-                enchant(raider, bow, Enchantments.POWER, Math.min(tier - 2, 3));
+                enchant(mob, bow, Enchantments.POWER, Math.min(tier - 2, 3));
             }
-            raider.setItemSlot(EquipmentSlot.MAINHAND, bow);
+            mob.setItemSlot(EquipmentSlot.MAINHAND, bow);
             if (tier >= 2) {
-                equipArmor(raider, Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE,
+                equipArmor(mob, Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE,
                         Items.LEATHER_LEGGINGS, Items.LEATHER_BOOTS);
             } else {
-                raider.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.LEATHER_HELMET));
+                mob.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.LEATHER_HELMET));
             }
         }
     },
@@ -84,25 +83,24 @@ public enum RaiderKit {
      */
     TANK(20.0, 0.30, false, 0.8) {
         @Override
-        public void equip(RaiderEntity raider, RandomSource random) {
-            int tier = raider.getRaidTier();
+        public void equip(PathfinderMob mob, int tier, RandomSource random) {
             ItemStack mace = new ItemStack(Items.MACE);
             if (tier >= 2) {
-                enchant(raider, mace, Enchantments.KNOCKBACK, 1);
+                enchant(mob, mace, Enchantments.KNOCKBACK, 1);
             }
             if (tier >= 4) {
-                enchant(raider, mace, Enchantments.SHARPNESS, 2);
+                enchant(mob, mace, Enchantments.SHARPNESS, 2);
             }
-            raider.setItemSlot(EquipmentSlot.MAINHAND, mace);
+            mob.setItemSlot(EquipmentSlot.MAINHAND, mace);
             if (tier >= 3) {
-                equipArmor(raider, Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE,
+                equipArmor(mob, Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE,
                         Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS);
             } else {
-                equipArmor(raider, Items.IRON_HELMET, Items.IRON_CHESTPLATE,
+                equipArmor(mob, Items.IRON_HELMET, Items.IRON_CHESTPLATE,
                         Items.IRON_LEGGINGS, Items.IRON_BOOTS);
             }
             if (tier >= 5) {
-                raider.addEffect(new MobEffectInstance(
+                mob.addEffect(new MobEffectInstance(
                         MobEffects.REGENERATION, MobEffectInstance.INFINITE_DURATION, 0));
             }
         }
@@ -138,28 +136,28 @@ public enum RaiderKit {
         return this.knockbackResistance;
     }
 
-    /** Hands the raider this kit's equipment, scaled to its raid tier. */
-    public abstract void equip(RaiderEntity raider, RandomSource random);
+    /** Hands {@code mob} this kit's equipment, scaled to the raid tier. */
+    public abstract void equip(PathfinderMob mob, int raidTier, RandomSource random);
 
     /**
      * Enchants {@code stack} in place. Enchantments are datapack registries in
-     * 1.21, so the holder is resolved through the raider's registry access; a
+     * 1.21, so the holder is resolved through the mob's registry access; a
      * missing entry silently skips the enchant rather than failing the spawn.
      */
-    private static void enchant(RaiderEntity raider, ItemStack stack,
+    private static void enchant(PathfinderMob mob, ItemStack stack,
                                 ResourceKey<Enchantment> enchantment, int level) {
-        raider.registryAccess().lookup(Registries.ENCHANTMENT)
+        mob.registryAccess().lookup(Registries.ENCHANTMENT)
                 .flatMap(registry -> registry.get(enchantment))
                 .ifPresent(holder -> stack.enchant(holder, level));
     }
 
     /** Fills all four armor slots with the given set. */
-    private static void equipArmor(RaiderEntity raider, Item helmet, Item chestplate,
+    private static void equipArmor(PathfinderMob mob, Item helmet, Item chestplate,
                                    Item leggings, Item boots) {
-        raider.setItemSlot(EquipmentSlot.HEAD, new ItemStack(helmet));
-        raider.setItemSlot(EquipmentSlot.CHEST, new ItemStack(chestplate));
-        raider.setItemSlot(EquipmentSlot.LEGS, new ItemStack(leggings));
-        raider.setItemSlot(EquipmentSlot.FEET, new ItemStack(boots));
+        mob.setItemSlot(EquipmentSlot.HEAD, new ItemStack(helmet));
+        mob.setItemSlot(EquipmentSlot.CHEST, new ItemStack(chestplate));
+        mob.setItemSlot(EquipmentSlot.LEGS, new ItemStack(leggings));
+        mob.setItemSlot(EquipmentSlot.FEET, new ItemStack(boots));
     }
 
     public static RaiderKit random(RandomSource random) {

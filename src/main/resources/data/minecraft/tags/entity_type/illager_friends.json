@@ -1,0 +1,12 @@
+{
+  "replace": false,
+  "values": [
+    "basebuster:raider",
+    "basebuster:raider_boss",
+    "basebuster:raider_vindicator",
+    "basebuster:raider_pillager",
+    "basebuster:raider_evoker",
+    "basebuster:raider_ravager",
+    "basebuster:raider_ravager_boss"
+  ]
+}

@@ -2,7 +2,7 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
-import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -98,7 +98,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     @Nullable
     private BlockPos nearestFlag() {
         // Raiders don't march on flags their faction already owns
-        return this.mob instanceof RaiderEntity raider ? raider.nearestUncapturedFlag() : null;
+        return this.mob instanceof IRaider raider ? raider.nearestUncapturedFlag() : null;
     }
 
     @Override

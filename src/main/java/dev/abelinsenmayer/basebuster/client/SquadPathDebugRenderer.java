@@ -11,7 +11,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
-import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaiderBoss;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
@@ -26,7 +26,7 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import java.util.List;
 
 /**
- * Debug overlay drawing each living {@link RaiderBossEntity}'s squad path --
+ * Debug overlay drawing each living {@link IRaiderBoss}'s squad path --
  * the decimated rough route assigned at raid spawn -- as red line segments
  * between its waypoints.
  * A leader segment from the boss to the first waypoint attributes each route
@@ -66,7 +66,7 @@ public final class SquadPathDebugRenderer {
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
         for (Entity entity : level.entitiesForRendering()) {
-            if (entity instanceof RaiderBossEntity boss) {
+            if (entity instanceof IRaiderBoss boss) {
                 drawSquadPath(poseStack, lines, boss);
             }
         }
@@ -111,7 +111,7 @@ public final class SquadPathDebugRenderer {
         RenderSystem.disableBlend();
     }
 
-    private static void drawSquadPath(PoseStack poseStack, VertexConsumer lines, RaiderBossEntity boss) {
+    private static void drawSquadPath(PoseStack poseStack, VertexConsumer lines, IRaiderBoss boss) {
         List<BlockPos> waypoints = boss.getSyncedSquadPath();
         if (waypoints.isEmpty()) {
             return;
@@ -119,7 +119,7 @@ public final class SquadPathDebugRenderer {
 
         PoseStack.Pose pose = poseStack.last();
         // Leader segment: boss eye position to the corridor's first waypoint
-        Vec3 eye = boss.getEyePosition();
+        Vec3 eye = boss.mob().getEyePosition();
         BlockPos first = waypoints.get(0);
         emitLine(pose, lines, eye.x, eye.y, eye.z,
                 first.getX() + 0.5, first.getY() + 0.5, first.getZ() + 0.5);

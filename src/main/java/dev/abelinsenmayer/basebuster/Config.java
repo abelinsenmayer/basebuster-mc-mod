@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster;
 
 import java.util.List;
 
+import dev.abelinsenmayer.basebuster.raids.RaidTheme;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -46,7 +47,7 @@ public class Config {
 
     public static final ModConfigSpec.BooleanValue RAIDER_GLOWING = BUILDER
             .comment("Whether regular raiders glow perpetually, making them visible through walls")
-            .define("raider.glowing", true);
+            .define("raider.glowing", false);
 
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
@@ -67,6 +68,10 @@ public class Config {
     public static final ModConfigSpec.BooleanValue RAID_SINGLE_SPAWN_POINT = BUILDER
             .comment("Whether every raid group spawns together at the single most reachable point instead of spreading around the flag")
             .define("raidSpawning.singleSpawnPoint", true);
+
+    public static final ModConfigSpec.EnumValue<RaidTheme> RAID_THEME = BUILDER
+            .comment("The species raid parties are made of: ZOMBIE uses the mod's kit-equipped zombie raiders and bosses, ILLAGER uses vanilla illagers (pillagers, vindicators, evokers) led by ravager bosses")
+            .defineEnum("raidSpawning.theme", RaidTheme.ILLAGER);
 
     public static final ModConfigSpec.IntValue RAID_SEARCH_MAX_AIR_HEIGHT = BUILDER
             .comment("Blocks above solid support that coarse long-range path searches (raid spawn anchors, squad routes) may plan scaffold moves; bounds the aerial search space for high flags")

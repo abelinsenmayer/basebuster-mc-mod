@@ -4,10 +4,8 @@ import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
-import dev.abelinsenmayer.basebuster.entities.RaiderBossEntity;
-import dev.abelinsenmayer.basebuster.entities.RaiderEntity;
-import dev.abelinsenmayer.basebuster.entities.RaiderKit;
-import dev.abelinsenmayer.basebuster.entities.RaiderSkin;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
+import dev.abelinsenmayer.basebuster.entities.IRaiderBoss;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNodeEvaluator;
 import dev.abelinsenmayer.basebuster.pathfinding.ResumablePathSearch;
@@ -23,7 +21,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.PathNavigationRegion;
-import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.pathfinder.Path;
@@ -46,10 +43,12 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Spawns a raiding party ({@link RaiderBossEntity} bosses plus a mix of
- * {@link RaiderEntity} kits) just outside a flag's protection radius, biased
- * toward the cheapest approach a raider could take to the flag. Party size and
- * makeup scale with the flag's base level; see {@link #RAID_COMPOSITION}.
+ * Spawns a raiding party (a {@link RaidTheme}'s bosses plus members) just
+ * outside a flag's protection radius, biased toward the cheapest approach a
+ * raider could take to the flag. Party size and makeup scale with the flag's
+ * base level; see {@link #RAID_COMPOSITION}. The theme (zombie raiders or
+ * vanilla illagers, via {@code raidSpawning.theme}) owns species creation;
+ * everything below is interface-typed.
  *
  * <p>Because the spawn ring sits well beyond a single pathing search's reach,
  * this uses an approximate, single-search strategy:
@@ -100,8 +99,9 @@ public final class RaidSpawner {
             {4, 39, 30, 12}, // Level 4
             {5, 39, 45, 15}, // Level 5
     };
-    // Kits assigned to the member columns of RAID_COMPOSITION, in order
-    private static final RaiderKit[] MEMBER_KITS = {RaiderKit.BOWMAN, RaiderKit.SWORD_AND_BOARD, RaiderKit.TANK};
+    // Member columns of RAID_COMPOSITION per row (all columns after the
+    // leading boss count); each theme maps them to its own member types
+    private static final int MEMBER_SLOTS = RAID_COMPOSITION[0].length - 1;
     // Minimum distance from the party anchor a member may appear; large
     // parties spread wider (see startRaid)
     private static final int MEMBER_SPREAD_RADIUS = 4;
@@ -130,22 +130,23 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaid(ServerLevel level, BlockPos flagPos, Runnable onPartySpawned) {
+        RaidTheme theme = Config.RAID_THEME.get();
         // Probe with the boss: it's the largest member, so routes and spawn
         // spots that fit the boss fit everyone
-        RaiderBossEntity boss = newPartyProbe(level, flagPos);
+        IRaiderBoss boss = newPartyProbe(level, flagPos, theme);
         if (boss == null) {
             return false;
         }
         RandomSource random = level.getRandom();
         int distance = BaseFlagBlock.protectionRadius(level, flagPos) + MIN_SPAWN_BUFFER + random.nextInt(MAX_SPAWN_BUFFER);
-        List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss, random);
+        List<BlockPos> anchors = surfaceAnchors(level, flagPos, distance, boss.mob(), random);
         if (anchors.isEmpty()) {
             return false;
         }
         int groupCount = Config.RAID_SINGLE_SPAWN_POINT.get()
                 ? 1
                 : RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, boss, anchors, distance, groupCount, onPartySpawned);
+        return scheduleParty(level, flagPos, theme, boss, anchors, distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -158,17 +159,18 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos, Runnable onPartySpawned) {
-        RaiderBossEntity boss = newPartyProbe(level, flagPos);
+        RaidTheme theme = Config.RAID_THEME.get();
+        IRaiderBoss boss = newPartyProbe(level, flagPos, theme);
         if (boss == null) {
             return false;
         }
-        BlockPos anchor = safeSpawnNear(level, spawnPos, boss);
+        BlockPos anchor = safeSpawnNear(level, spawnPos, boss.mob());
         if (anchor == null || closerToOtherFlag(flagPos, anchor, otherFlags(level, flagPos))) {
             return false;
         }
         int distance = Math.max(flagPos.distManhattan(anchor), 1);
         int groupCount = RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, boss, List.of(anchor), distance, groupCount, onPartySpawned);
+        return scheduleParty(level, flagPos, theme, boss, List.of(anchor), distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -177,15 +179,12 @@ public final class RaidSpawner {
      * group's boss.
      */
     @Nullable
-    private static RaiderBossEntity newPartyProbe(ServerLevel level, BlockPos flagPos) {
-        RaiderBossEntity probe = BaseBuster.RAIDER_BOSS.get().create(level);
+    private static IRaiderBoss newPartyProbe(ServerLevel level, BlockPos flagPos, RaidTheme theme) {
+        IRaiderBoss probe = theme.createBoss(level);
         if (probe == null) {
             return null;
         }
-        probe.moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
-        // Every spawned raider wears the generic zombie skin for now; restore
-        // a per-raid RaiderSkinTheme draw when varied skins come back
-        probe.setSkin(RaiderSkin.ZOMBIE);
+        probe.mob().moveTo(flagPos.getX() + 0.5, flagPos.getY(), flagPos.getZ() + 0.5);
         return probe;
     }
 
@@ -210,8 +209,8 @@ public final class RaidSpawner {
      * Queues the searches a party needs and returns immediately; the party
      * itself spawns when they finish (see {@link PendingRaid}).
      */
-    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, List<BlockPos> anchors, int distance, int groupCount, Runnable onPartySpawned) {
-        new PendingRaid(level, flagPos, probe, distance, groupCount, raidTier(level, flagPos), onPartySpawned).start(anchors);
+    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss probe, List<BlockPos> anchors, int distance, int groupCount, Runnable onPartySpawned) {
+        new PendingRaid(level, flagPos, theme, probe, distance, groupCount, raidTier(level, flagPos), onPartySpawned).start(anchors);
         return true;
     }
 
@@ -226,7 +225,8 @@ public final class RaidSpawner {
     private static final class PendingRaid {
         private final ServerLevel level;
         private final BlockPos flagPos;
-        private final RaiderBossEntity probe;
+        private final RaidTheme theme;
+        private final IRaiderBoss probe;
         private final int distance;
         private final int groupCount;
         private final int raidTier;
@@ -235,9 +235,10 @@ public final class RaidSpawner {
         private List<Path> paths = List.of();
         private int pendingSearches;
 
-        private PendingRaid(ServerLevel level, BlockPos flagPos, RaiderBossEntity probe, int distance, int groupCount, int raidTier, Runnable onPartySpawned) {
+        private PendingRaid(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss probe, int distance, int groupCount, int raidTier, Runnable onPartySpawned) {
             this.level = level;
             this.flagPos = flagPos;
+            this.theme = theme;
             this.probe = probe;
             this.distance = distance;
             this.groupCount = groupCount;
@@ -250,10 +251,10 @@ public final class RaidSpawner {
          * primary spot (and doubles as the first group's route).
          */
         void start(List<BlockPos> anchors) {
-            ResumablePathSearch search = newCoarseSearch(this.probe);
-            search.begin(flagRegion(this.level, this.flagPos, anchors), this.probe, Set.copyOf(anchors),
+            ResumablePathSearch search = newCoarseSearch(this.probe.mob());
+            search.begin(flagRegion(this.level, this.flagPos, anchors), this.probe.mob(), Set.copyOf(anchors),
                     (float) this.distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
-            PathSearchScheduler.schedule(search, "raid anchors from flag " + this.flagPos, this.probe::isAlive,
+            PathSearchScheduler.schedule(search, "raid anchors from flag " + this.flagPos, () -> this.probe.mob().isAlive(),
                     path -> this.beginGroupSearches(anchors, path));
         }
 
@@ -288,10 +289,10 @@ public final class RaidSpawner {
                     continue;
                 }
                 this.pendingSearches++;
-                ResumablePathSearch search = newCoarseSearch(this.probe);
-                search.begin(region, this.probe, Set.of(entry.getKey()),
+                ResumablePathSearch search = newCoarseSearch(this.probe.mob());
+                search.begin(region, this.probe.mob(), Set.of(entry.getKey()),
                         (float) this.distance * MAX_RANGE_MULTIPLIER, TARGET_ACCURACY, 1.0F);
-                PathSearchScheduler.schedule(search, "raid group " + indices + " to " + entry.getKey(), this.probe::isAlive,
+                PathSearchScheduler.schedule(search, "raid group " + indices + " to " + entry.getKey(), () -> this.probe.mob().isAlive(),
                         path -> this.onGroupPathDone(indices, path));
             }
             if (this.pendingSearches == 0) {
@@ -309,7 +310,7 @@ public final class RaidSpawner {
         }
 
         private void finish() {
-            spawnParty(this.level, this.flagPos, this.probe, this.spots, this.paths, this.raidTier);
+            spawnParty(this.level, this.flagPos, this.theme, this.probe, this.spots, this.paths, this.raidTier);
             this.onPartySpawned.run();
         }
     }
@@ -318,7 +319,7 @@ public final class RaidSpawner {
      * Spawns the party itself once its searches have resolved: bosses take
      * their spots and routes, members scatter around the spots, and horns.
      */
-    private static void spawnParty(ServerLevel level, BlockPos flagPos, RaiderBossEntity boss, List<BlockPos> spots, List<Path> groupPaths, int raidTier) {
+    private static void spawnParty(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss boss, List<BlockPos> spots, List<Path> groupPaths, int raidTier) {
         RandomSource random = level.getRandom();
         int[] composition = RAID_COMPOSITION[raidTier - 1];
         int partySize = Arrays.stream(composition).sum();
@@ -332,42 +333,39 @@ public final class RaidSpawner {
         boss.setRaidTarget(flagPos);
         boss.setRaidTier(raidTier);
 
-        spawnMember(level, boss, spots.get(0));
+        spawnMember(level, boss.mob(), spots.get(0));
         assignSquadPath(boss, groupPaths.get(0), flagPos);
 
-        List<RaiderBossEntity> bosses = new ArrayList<>();
+        List<IRaiderBoss> bosses = new ArrayList<>();
         bosses.add(boss);
-        // Each remaining boss leads its own group from its own spot. Their
-        // kits stay unset so finalizeSpawn gives each a random one.
+        // Each remaining boss leads its own group from its own spot
         for (int i = 1; i < composition[0]; i++) {
-            RaiderBossEntity extra = BaseBuster.RAIDER_BOSS.get().create(level);
+            IRaiderBoss extra = theme.createBoss(level);
             if (extra == null) {
                 continue;
             }
             extra.setRaidId(raidId);
             extra.setRaidTarget(flagPos);
             extra.setRaidTier(raidTier);
-            extra.setSkin(RaiderSkin.ZOMBIE);
-            spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i % spots.size()), spreadRadius, random));
+            spawnMember(level, extra.mob(), findSafeSpawnNear(level, extra.mob(), spots.get(i % spots.size()), spreadRadius, random));
             assignSquadPath(extra, groupPaths.get(i % groupPaths.size()), flagPos);
             bosses.add(extra);
         }
 
         int memberIndex = 0;
-        for (int slot = 0; slot < MEMBER_KITS.length; slot++) {
+        for (int slot = 0; slot < MEMBER_SLOTS; slot++) {
             for (int i = 0; i < composition[slot + 1]; i++) {
-                RaiderEntity raider = BaseBuster.RAIDER.get().create(level);
+                IRaider raider = theme.createMember(level, slot);
                 if (raider == null) {
                     continue;
                 }
-                raider.setKit(MEMBER_KITS[slot]);
-                // Tier must be set before finalizeSpawn runs the kit's equip
+                // Tier must be set before finalizeSpawn runs the member's
+                // species-specific equip (a zombie kit reads it for gear)
                 raider.setRaidTier(raidTier);
-                raider.setSkin(RaiderSkin.ZOMBIE);
                 // Split members evenly across the group spots, then join
                 // whichever boss actually ended up closest to where they spawned
-                BlockPos spawn = findSafeSpawnNear(level, raider, spots.get(memberIndex % spots.size()), spreadRadius, random);
-                spawnMember(level, raider, spawn);
+                BlockPos spawn = findSafeSpawnNear(level, raider.mob(), spots.get(memberIndex % spots.size()), spreadRadius, random);
+                spawnMember(level, raider.mob(), spawn);
                 raider.setSquadLeader(nearestBoss(bosses, spawn));
                 memberIndex++;
             }
@@ -387,12 +385,11 @@ public final class RaidSpawner {
      * bosses carry no raid id and never count.
      */
     public static boolean isRaidInProgress(ServerLevel level, BlockPos flagPos) {
-        return !level.getEntities(
-                EntityTypeTest.forClass(RaiderBossEntity.class),
-                new AABB(flagPos).inflate(RAID_TARGET_SCAN_RADIUS),
-                boss -> boss.getRaidId() != null
+        return IRaiderBoss.nearby(level, new AABB(flagPos).inflate(RAID_TARGET_SCAN_RADIUS))
+                .stream()
+                .anyMatch(boss -> boss.getRaidId() != null
                         && flagPos.equals(boss.getRaidTarget())
-                        && !boss.isDeadOrDying()).isEmpty();
+                        && !boss.mob().isDeadOrDying());
     }
 
     /**
@@ -497,7 +494,7 @@ public final class RaidSpawner {
      * reversed into march order; null paths leave the squad on ordinary
      * partial pathing.
      */
-    private static void assignSquadPath(RaiderBossEntity boss, @Nullable Path path, BlockPos flagPos) {
+    private static void assignSquadPath(IRaiderBoss boss, @Nullable Path path, BlockPos flagPos) {
         if (path != null) {
             boss.setSquadPath(SquadPathSearch.decimate(path, true), flagPos);
         }
@@ -574,11 +571,11 @@ public final class RaidSpawner {
      * they spawned nearest, which keeps squads local even when spots end up
      * clustered by the terrain.
      */
-    private static RaiderBossEntity nearestBoss(List<RaiderBossEntity> bosses, BlockPos pos) {
-        RaiderBossEntity nearest = bosses.get(0);
-        double bestDist = nearest.blockPosition().distSqr(pos);
+    private static IRaiderBoss nearestBoss(List<IRaiderBoss> bosses, BlockPos pos) {
+        IRaiderBoss nearest = bosses.get(0);
+        double bestDist = nearest.mob().blockPosition().distSqr(pos);
         for (int i = 1; i < bosses.size(); i++) {
-            double dist = bosses.get(i).blockPosition().distSqr(pos);
+            double dist = bosses.get(i).mob().blockPosition().distSqr(pos);
             if (dist < bestDist) {
                 bestDist = dist;
                 nearest = bosses.get(i);
@@ -634,7 +631,7 @@ public final class RaidSpawner {
         return anchor;
     }
 
-    private static void spawnMember(ServerLevel level, RaiderEntity member, BlockPos pos) {
+    private static void spawnMember(ServerLevel level, Mob member, BlockPos pos) {
         member.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5,
                 level.getRandom().nextFloat() * 360.0F, 0.0F);
         member.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), MobSpawnType.EVENT, null);

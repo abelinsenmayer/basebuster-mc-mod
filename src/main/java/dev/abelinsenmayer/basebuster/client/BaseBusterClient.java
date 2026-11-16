@@ -4,6 +4,10 @@ import dev.abelinsenmayer.basebuster.BaseBuster;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.entity.EvokerRenderer;
+import net.minecraft.client.renderer.entity.PillagerRenderer;
+import net.minecraft.client.renderer.entity.RavagerRenderer;
+import net.minecraft.client.renderer.entity.VindicatorRenderer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -46,6 +50,12 @@ public class BaseBusterClient {
         // theme per raid, egg/summon spawns get a random skin per entity
         event.registerEntityRenderer(BaseBuster.RAIDER.get(), RaiderRenderer::new);
         event.registerEntityRenderer(BaseBuster.RAIDER_BOSS.get(), RaiderRenderer::new);
+        // Illager raiders render exactly like their vanilla counterparts
+        event.registerEntityRenderer(BaseBuster.RAIDER_VINDICATOR.get(), VindicatorRenderer::new);
+        event.registerEntityRenderer(BaseBuster.RAIDER_PILLAGER.get(), PillagerRenderer::new);
+        event.registerEntityRenderer(BaseBuster.RAIDER_EVOKER.get(), EvokerRenderer::new);
+        event.registerEntityRenderer(BaseBuster.RAIDER_RAVAGER.get(), RavagerRenderer::new);
+        event.registerEntityRenderer(BaseBuster.RAIDER_RAVAGER_BOSS.get(), RavagerRenderer::new);
         // The flag renders as a black banner (red once raiders capture it)
         event.registerBlockEntityRenderer(BaseBuster.BASE_FLAG_BLOCK_ENTITY.get(), BaseFlagRenderer::new);
     }
