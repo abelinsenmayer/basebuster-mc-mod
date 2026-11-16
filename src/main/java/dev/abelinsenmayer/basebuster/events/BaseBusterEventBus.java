@@ -13,6 +13,7 @@ import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -35,12 +36,26 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 
 public class BaseBusterEventBus {
+    // Ticks between territory-entry checks for each player
+    private static final int TERRITORY_CHECK_INTERVAL_TICKS = 20;
+    // Extra blocks of slack before a player counts as having left a flag's
+    // sphere, so hovering on the boundary doesn't spam enter/exit messages
+    private static final int TERRITORY_EXIT_MARGIN = 4;
+
+    // Player id -> flag position whose territory currently contains them.
+    // In-memory only; a stale entry just delays a re-entry message.
+    private final Map<UUID, BlockPos> playerTerritories = new HashMap<>();
 
     /** Advances all in-progress long-range path searches by their per-tick slice. */
     @SubscribeEvent
@@ -198,6 +213,66 @@ public class BaseBusterEventBus {
         if (event.getEntity() instanceof ServerPlayer player) {
             FlagSpawnProtection.clearSpawnIfControlled(player);
         }
+    }
+
+    /**
+     * Announces territory entries: when a player crosses into an owned flag's
+     * protection sphere, they get a brief action-bar message naming the owner
+     * (and the flag itself, if it has a custom name). Tracked per player so the
+     * message fires on entry only; a small exit margin keeps boundary jitter
+     * from retriggering it.
+     */
+    @SubscribeEvent
+    public void onPlayerTick(PlayerTickEvent.Post event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || player.tickCount % TERRITORY_CHECK_INTERVAL_TICKS != 0) {
+            return;
+        }
+        ServerLevel level = (ServerLevel) player.level();
+        BlockPos pos = player.blockPosition();
+        BlockPos previous = this.playerTerritories.get(player.getUUID());
+        BlockPos current = nearestCoveringFlag(level, pos);
+
+        if (current == null && previous != null
+                && FlagsSavedData.getFromLevel(level).getFlagLocations().contains(previous)) {
+            int radius = BaseFlagBlock.protectionRadius(level, previous) + TERRITORY_EXIT_MARGIN;
+            if (previous.distSqr(pos) <= (double) radius * radius) {
+                // Just outside the sphere but inside the margin: still "in"
+                current = previous;
+            }
+        }
+
+        if (Objects.equals(previous, current)) {
+            return;
+        }
+        if (current == null) {
+            this.playerTerritories.remove(player.getUUID());
+            return;
+        }
+        this.playerTerritories.put(player.getUUID(), current);
+        notifyTerritoryEntry(level, current, player);
+    }
+
+    private static void notifyTerritoryEntry(ServerLevel level, BlockPos flagPos, ServerPlayer player) {
+        if (!(level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)) {
+            return;
+        }
+        String owner = flagEntity.getTerritoryOwnerName();
+        if (owner == null) {
+            return;
+        }
+        MutableComponent message = Component.literal("You have entered " + owner + "'s territory");
+        Component flagName = flagEntity.getCustomName();
+        if (flagName != null) {
+            message.append(": ").append(flagName);
+        }
+        player.displayClientMessage(message.withStyle(ChatFormatting.GRAY), true);
+    }
+
+    /** Drops the player's territory tracking entry when they disconnect. */
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        this.playerTerritories.remove(event.getEntity().getUUID());
     }
 
     /**

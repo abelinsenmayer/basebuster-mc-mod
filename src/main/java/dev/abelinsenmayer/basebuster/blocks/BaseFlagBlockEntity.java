@@ -9,6 +9,9 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
@@ -122,9 +125,37 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 : DyeColor.BLACK;
     }
 
+    /**
+     * Renames this flag, e.g. when a player uses a named name tag on it.
+     * {@code BannerBlockEntity} stores its name only in the implicit component
+     * data (it exposes no setter), so this goes through the same component
+     * machinery that applies anvil-named items on placement.
+     */
+    public void setFlagName(Component name) {
+        applyComponents(
+                DataComponentMap.EMPTY,
+                DataComponentPatch.builder().set(DataComponents.CUSTOM_NAME, name).build());
+    }
+
+    /**
+     * The display name of whoever controls this flag's territory -- the owning
+     * player's name, or the faction name (e.g. {@link #RAIDER_FACTION}) for a
+     * captured flag. Null while the flag is unowned.
+     */
+    @Nullable
+    public String getTerritoryOwnerName() {
+        if (ownerFaction != null) {
+            return ownerFaction;
+        }
+        return "NONE".equals(ownerName) ? null : ownerName;
+    }
+
     public Component getInfoForDisplay() {
         String ownerDisplay = ownerFaction != null ? ownerFaction + " (faction)" : ownerName;
-        return Component.literal("Owner: " + ownerDisplay + "\nLevel: " + baseLevel + "\nRepairs needed: " + repairTargets.size());
+        Component name = getCustomName();
+        return Component.literal(
+                (name != null ? "Name: " + name.getString() + "\n" : "")
+                        + "Owner: " + ownerDisplay + "\nLevel: " + baseLevel + "\nRepairs needed: " + repairTargets.size());
     }
 
     public int getBaseLevel() {
@@ -549,7 +580,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     public boolean isUnowned() {
-        return this.ownerName == null && this.ownerFaction == null;
+        return "NONE".equals(this.ownerName) && this.ownerFaction == null;
     }
 
     /**

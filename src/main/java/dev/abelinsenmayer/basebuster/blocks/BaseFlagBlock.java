@@ -4,7 +4,9 @@ import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -190,6 +192,34 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                     level.sendBlockUpdated(pos, state, state, 3);
                     player.displayClientMessage(
                             Component.literal("Flag boundary " + (visible ? "shown" : "hidden")), true);
+                }
+            }
+            return ItemInteractionResult.sidedSuccess(level.isClientSide);
+        }
+
+        // Renaming: anvil-named flag items carry their name into the block on
+        // placement, and a named name tag renames a flag that's already down
+        if (stack.is(Items.NAME_TAG)) {
+            Component name = stack.get(DataComponents.CUSTOM_NAME);
+            // An unused (unnamed) tag falls through to the normal flag interaction
+            if (name == null) {
+                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            }
+            if (!level.isClientSide) {
+                BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+                Player owner = blockEntity != null ? blockEntity.getOwner() : null;
+                if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+                    player.displayClientMessage(
+                            Component.literal("Only the flag's owner can rename it")
+                                    .withStyle(ChatFormatting.RED),
+                            true);
+                    return ItemInteractionResult.sidedSuccess(level.isClientSide);
+                }
+                blockEntity.setFlagName(name);
+                blockEntity.setChanged();
+                level.sendBlockUpdated(pos, state, state, 3);
+                if (!player.hasInfiniteMaterials()) {
+                    stack.shrink(1);
                 }
             }
             return ItemInteractionResult.sidedSuccess(level.isClientSide);
