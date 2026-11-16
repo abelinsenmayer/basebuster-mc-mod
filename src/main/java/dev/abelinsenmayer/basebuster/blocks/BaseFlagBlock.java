@@ -15,6 +15,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -218,6 +219,49 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                 blockEntity.setFlagName(name);
                 blockEntity.setChanged();
                 level.sendBlockUpdated(pos, state, state, 3);
+                if (!player.hasInfiniteMaterials()) {
+                    stack.shrink(1);
+                }
+            }
+            return ItemInteractionResult.sidedSuccess(level.isClientSide);
+        }
+
+        // Banner design: the owner can stamp a banner's base color and
+        // patterns onto the flag; the banner is consumed like a name tag
+        if (stack.getItem() instanceof BannerItem) {
+            if (!level.isClientSide) {
+                BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
+                Player owner = blockEntity != null ? blockEntity.getOwner() : null;
+                if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+                    player.displayClientMessage(
+                            Component.literal("Only the flag's owner can change its design")
+                                    .withStyle(ChatFormatting.RED),
+                            true);
+                    return ItemInteractionResult.sidedSuccess(level.isClientSide);
+                }
+                FlagsSavedData.FlagDesign design = blockEntity.applyBannerDesign(stack);
+                level.sendBlockUpdated(pos, state, state, 3);
+
+                // Remember the design: every flag the player owns takes it on,
+                // including flags they place or capture later (see setOwner)
+                ServerLevel serverLevel = (ServerLevel) level;
+                FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
+                flagsSavedData.setPlayerDesign(player.getUUID(), design);
+                for (BlockPos flagPos : flagsSavedData.getFlagLocations()) {
+                    // Flags in unloaded chunks aren't touched here (same
+                    // no-chunk-loading stance as protectionRadiusIfLoaded);
+                    // they pick up the design when they load -- see
+                    // BaseFlagBlockEntity#syncOwnerDesign
+                    if (flagPos.equals(pos) || !serverLevel.hasChunkAt(flagPos)) {
+                        continue;
+                    }
+                    if (serverLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity other
+                            && other.getOwner() != null
+                            && other.getOwner().getUUID().equals(player.getUUID())) {
+                        other.applyDesign(design.color(), design.patterns());
+                        serverLevel.sendBlockUpdated(flagPos, other.getBlockState(), other.getBlockState(), 3);
+                    }
+                }
                 if (!player.hasInfiniteMaterials()) {
                     stack.shrink(1);
                 }

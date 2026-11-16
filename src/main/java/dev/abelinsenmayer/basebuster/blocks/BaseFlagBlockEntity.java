@@ -23,6 +23,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -30,6 +31,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
+import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -61,6 +63,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     private Player owner = null;
     private String ownerName = "NONE";
+    // Persisted so a flag loading with its chunk can look up its owner's
+    // stored banner design even while the owner is offline
+    @Nullable
+    private UUID ownerUuid = null;
     // Faction ownership replaces player ownership (e.g. RAIDER_FACTION).
     // While set, getOwner() returns null so grief protection no longer applies.
     @Nullable
@@ -81,6 +87,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     // Base level derived from victory banners within MAX_PROTECTION_RADIUS
     private int baseLevel = 1;
+
+    // Base color applied by the owner right-clicking with a banner; BLACK is
+    // the flag's own default. Patterns live in the inherited BANNER_PATTERNS
+    // component. A captured flag renders RED regardless (see getBaseColor).
+    private DyeColor flagColor = DyeColor.BLACK;
 
     // Progress toward a raider capture, in [0, 1)
     private float captureProgress = 0.0F;
@@ -118,11 +129,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     @Override
     public DyeColor getBaseColor() {
-        // Black banner while held, red once raiders capture it
+        // The owner's applied color (black until then), red once raiders capture it
         BlockState state = getBlockState();
         return state.hasProperty(BaseFlagBlock.CAPTURED) && state.getValue(BaseFlagBlock.CAPTURED)
                 ? DyeColor.RED
-                : DyeColor.BLACK;
+                : this.flagColor;
     }
 
     /**
@@ -135,6 +146,40 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         applyComponents(
                 DataComponentMap.EMPTY,
                 DataComponentPatch.builder().set(DataComponents.CUSTOM_NAME, name).build());
+    }
+
+    /**
+     * Copies a banner item's base color and pattern layers onto this flag, e.g.
+     * when the owner right-clicks with a banner.
+     *
+     * @return the applied design, so callers can record it for the player's
+     *         other flags
+     */
+    public FlagsSavedData.FlagDesign applyBannerDesign(ItemStack banner) {
+        BannerPatternLayers patterns = banner.get(DataComponents.BANNER_PATTERNS);
+        if (patterns == null) {
+            patterns = BannerPatternLayers.EMPTY;
+        }
+        DyeColor color = banner.getItem() instanceof BannerItem bannerItem
+                ? bannerItem.getColor()
+                : this.flagColor;
+        this.applyDesign(color, patterns);
+        return new FlagsSavedData.FlagDesign(color, patterns);
+    }
+
+    /**
+     * Applies a stored {@link FlagsSavedData.FlagDesign} to this flag. Patterns
+     * arrive through the same implicit-component machinery that applies anvil
+     * names on placement; the base color lives on the banner's item type, not
+     * in a data component, so it's recorded separately. Callers are
+     * responsible for {@code sendBlockUpdated} when clients need the change.
+     */
+    public void applyDesign(DyeColor color, BannerPatternLayers patterns) {
+        applyComponents(
+                DataComponentMap.EMPTY,
+                DataComponentPatch.builder().set(DataComponents.BANNER_PATTERNS, patterns).build());
+        this.flagColor = color;
+        setChanged();
     }
 
     /**
@@ -181,6 +226,33 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     public void clearRemoved() {
         super.clearRemoved();
         syncDebugOverlayState();
+        syncOwnerDesign();
+    }
+
+    /**
+     * Brings a freshly loaded flag in line with the banner design its owner
+     * last stamped on any of their flags. Runs when the flag's chunk registers
+     * its block entities with the level, covering flags that were unloaded when
+     * the design was applied; the corrected data rides the chunk's block-entity
+     * payload to clients, so no sendBlockUpdated is needed.
+     */
+    private void syncOwnerDesign() {
+        if (!(this.level instanceof ServerLevel serverLevel)
+                || this.ownerFaction != null
+                || this.ownerUuid == null) {
+            return;
+        }
+        FlagsSavedData.FlagDesign design =
+                FlagsSavedData.getFromLevel(serverLevel).getPlayerDesign(this.ownerUuid);
+        if (design == null) {
+            return;
+        }
+        BannerPatternLayers current = this.components()
+                .getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY);
+        if (this.flagColor == design.color() && design.patterns().equals(current)) {
+            return;
+        }
+        this.applyDesign(design.color(), design.patterns());
     }
 
     @Override
@@ -524,13 +596,19 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             this.ownerName = tag.getString("owner_name");
             getOwner();  // Populate owner from online players (if possible)
         }
+        if (tag.hasUUID("owner_uuid")) {
+            this.ownerUuid = tag.getUUID("owner_uuid");
+        }
         if (tag.contains("owner_faction")) {
             this.ownerFaction = tag.getString("owner_faction");
             this.owner = null;
+            this.ownerUuid = null;
         }
         if (tag.contains("base_level")) {
             this.baseLevel = tag.getInt("base_level");
         }
+        // Absent means the flag's own default black; only non-default colors are saved
+        this.flagColor = tag.contains("flag_color") ? DyeColor.byId(tag.getInt("flag_color")) : DyeColor.BLACK;
         // Absent means off: saveAdditional only writes debug_boundary while it's true
         this.debugBoundary = tag.getBoolean("debug_boundary");
         syncDebugOverlayState();
@@ -557,7 +635,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         } else if (owner != null) {
             tag.putString("owner_name", owner.getDisplayName().getString());
         }
+        if (this.ownerUuid != null) {
+            tag.putUUID("owner_uuid", this.ownerUuid);
+        }
         tag.putInt("base_level", this.baseLevel);
+        if (this.flagColor != DyeColor.BLACK) {
+            tag.putInt("flag_color", this.flagColor.getId());
+        }
         if (this.debugBoundary) {
             tag.putBoolean("debug_boundary", true);
         }
@@ -591,19 +675,29 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     public void setOwner(Player player) {
         this.owner = player;
         this.ownerName = player.getDisplayName().getString();
+        this.ownerUuid = player.getUUID();
         this.ownerFaction = null;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
         this.lastPlayerCaptureTick = -1L;
-        // Reclaiming a raider-captured flag restores its uncaptured appearance
-        if (this.level instanceof ServerLevel serverLevel
-                && getBlockState().hasProperty(BaseFlagBlock.CAPTURED)
-                && getBlockState().getValue(BaseFlagBlock.CAPTURED)) {
-            BlockPos pos = getBlockPos();
-            serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, false), 3);
-            FlagsSavedData.getFromLevel(serverLevel).removeCapturedFlagLocation(pos);
+        if (this.level instanceof ServerLevel serverLevel) {
+            // Reclaiming a raider-captured flag restores its uncaptured appearance
+            if (getBlockState().hasProperty(BaseFlagBlock.CAPTURED)
+                    && getBlockState().getValue(BaseFlagBlock.CAPTURED)) {
+                BlockPos pos = getBlockPos();
+                serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, false), 3);
+                FlagsSavedData.getFromLevel(serverLevel).removeCapturedFlagLocation(pos);
+            }
+
+            // The flag takes on the banner design its new owner last stamped
+            // on one of their flags, if any
+            FlagsSavedData.FlagDesign design =
+                    FlagsSavedData.getFromLevel(serverLevel).getPlayerDesign(player.getUUID());
+            if (design != null) {
+                this.applyDesign(design.color(), design.patterns());
+            }
         }
         setChanged();
     }
@@ -767,6 +861,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
         this.owner = null;
         this.ownerName = RAIDER_FACTION;
+        this.ownerUuid = null;
         this.ownerFaction = RAIDER_FACTION;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
