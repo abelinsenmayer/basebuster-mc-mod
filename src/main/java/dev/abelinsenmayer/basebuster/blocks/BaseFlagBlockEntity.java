@@ -316,12 +316,52 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return;
         }
         this.raidCountdownTicks = countdownSeconds * 20;
-        ownerPlayer.displayClientMessage(
-                Component.literal("Raiders are approaching your flag at " + formatPos(pos)
-                                + "! You have " + formatMinutesSeconds(countdownSeconds) + " to prepare.")
-                        .withStyle(ChatFormatting.RED),
-                false);
+        ownerPlayer.displayClientMessage(approachWarning(pos, countdownSeconds), false);
         setChanged();
+    }
+
+    /**
+     * Starts a raid countdown on this flag, e.g. when a player carrying the
+     * Raid Omen effect crosses into its territory. After {@code delaySeconds}
+     * the countdown hands off to {@link RaidSpawner} exactly like the periodic
+     * raid timer does. Unlike the periodic timer this doesn't need the owner
+     * online -- the warning message and sound are skipped when they're away.
+     *
+     * @return whether the countdown started; false when one is already running
+     *         or a raid is in progress (this mod doesn't stack raids on a flag)
+     */
+    public boolean startRaidCountdown(int delaySeconds) {
+        if (this.raidCountdownTicks > 0
+                || (this.level instanceof ServerLevel serverLevel
+                        && RaidSpawner.isRaidInProgress(serverLevel, getBlockPos()))) {
+            return false;
+        }
+        Player ownerPlayer = this.getOwner();
+        if (ownerPlayer != null) {
+            ownerPlayer.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
+        }
+        this.raidCountdownTicks = delaySeconds * 20;
+        if (ownerPlayer != null) {
+            ownerPlayer.displayClientMessage(approachWarning(getBlockPos(), delaySeconds), false);
+        }
+        setChanged();
+        return true;
+    }
+
+    /**
+     * The owner's "raiders are approaching" warning for a countdown that just
+     * started, naming the flag when it has a custom name.
+     */
+    private Component approachWarning(BlockPos pos, int countdownSeconds) {
+        return Component.literal("Raiders are approaching " + flagDisplayName() + " at " + formatPos(pos)
+                        + "! You have " + formatMinutesSeconds(countdownSeconds) + " to prepare.")
+                .withStyle(ChatFormatting.RED);
+    }
+
+    /** "your flag" or 'your flag "<custom name>"' when the flag is named. */
+    private String flagDisplayName() {
+        Component name = getCustomName();
+        return name != null ? "your flag \"" + name.getString() + "\"" : "your flag";
     }
 
     private void tickRaidCountdown(ServerLevel serverLevel, BlockPos pos) {
@@ -334,7 +374,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             Player ownerPlayer = this.getOwner();
             if (ownerPlayer != null) {
                 ownerPlayer.displayClientMessage(
-                        Component.literal("30 seconds until raiders reach your flag at " + formatPos(pos) + "!")
+                        Component.literal("30 seconds until raiders reach " + flagDisplayName()
+                                        + " at " + formatPos(pos) + "!")
                                 .withStyle(ChatFormatting.RED),
                         false);
             }

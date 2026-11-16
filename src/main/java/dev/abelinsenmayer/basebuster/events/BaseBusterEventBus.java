@@ -17,6 +17,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Explosion;
@@ -251,6 +252,44 @@ public class BaseBusterEventBus {
         }
         this.playerTerritories.put(player.getUUID(), current);
         notifyTerritoryEntry(level, current, player);
+        tryTriggerOmenRaid(level, current, player);
+    }
+
+    /**
+     * Omen trigger: a player carrying Bad Omen or Raid Omen who enters
+     * territory claimed by a <em>different</em> player loses the effect, and
+     * the flag's own raid countdown (the same persisted timer periodic raids
+     * use) launches a raid on that flag after
+     * {@link Config#RAID_OMEN_COUNTDOWN_SECONDS} seconds. Unowned flags, the
+     * player's own flag, and faction-held territory don't consume the effect,
+     * nor does a flag that can't start a countdown (one pending, or a raid
+     * already in progress).
+     */
+    private static void tryTriggerOmenRaid(ServerLevel level, BlockPos flagPos, ServerPlayer player) {
+        boolean hasRaidOmen = player.hasEffect(MobEffects.RAID_OMEN);
+        boolean hasBadOmen = player.hasEffect(MobEffects.BAD_OMEN);
+        if (!hasRaidOmen && !hasBadOmen) {
+            return;
+        }
+        if (!(level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)
+                || flagEntity.isFactionOwned()) {
+            return;
+        }
+        String owner = flagEntity.getTerritoryOwnerName();
+        if (owner == null) {
+            return;
+        }
+        int countdownSeconds = Config.RAID_OMEN_COUNTDOWN_SECONDS.get();
+        if (!flagEntity.startRaidCountdown(countdownSeconds)) {
+            return;
+        }
+        player.removeEffect(MobEffects.RAID_OMEN);
+        player.removeEffect(MobEffects.BAD_OMEN);
+        player.displayClientMessage(
+                Component.literal("Your omen stirs -- a raid will strike " + owner
+                                + "'s territory in " + countdownSeconds + " seconds")
+                        .withStyle(ChatFormatting.DARK_RED),
+                false);
     }
 
     private static void notifyTerritoryEntry(ServerLevel level, BlockPos flagPos, ServerPlayer player) {

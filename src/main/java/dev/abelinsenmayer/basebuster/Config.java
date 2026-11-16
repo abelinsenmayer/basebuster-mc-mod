@@ -49,10 +49,6 @@ public class Config {
             .comment("Whether regular raiders glow perpetually, making them visible through walls")
             .define("raider.glowing", false);
 
-    public static final ModConfigSpec.DoubleValue RAIDER_MOVEMENT_SPEED = BUILDER
-            .comment("Base movement speed for illager-theme raiders (vanilla speeds: pillager/vindicator 0.35, evoker 0.5, ravager 0.3). Zombie-theme raiders ignore this and use their kit's speed instead")
-            .defineInRange("raider.movementSpeed", 0.28, 0.05, 1.0);
-
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
             .defineInRange("raiderSquad.searchRadius", 48.0, 1.0, 256.0);
@@ -108,6 +104,10 @@ public class Config {
     public static final ModConfigSpec.IntValue RAID_COUNTDOWN_SECONDS = BUILDER
             .comment("Seconds a flag's owner has to prepare between a raid warning and the raid party spawning; 0 spawns the raid immediately")
             .defineInRange("raidTimer.countdownSeconds", 300, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue RAID_OMEN_COUNTDOWN_SECONDS = BUILDER
+            .comment("Seconds between a player entering another player's territory with the Raid Omen effect and the raid party spawning on that flag")
+            .defineInRange("raidTimer.omenCountdownSeconds", 60, 1, Integer.MAX_VALUE);
 
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
