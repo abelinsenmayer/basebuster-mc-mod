@@ -3,7 +3,9 @@ package dev.abelinsenmayer.basebuster.events;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
+import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
+import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -12,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -30,8 +33,6 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Set;
 
 public class BaseBusterEventBus {
 
@@ -50,17 +51,31 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void livingDestroyBlock(LivingDestroyBlockEvent event) {
         Entity destroyer = event.getEntity();
+        if (destroyer.level() instanceof ServerLevel serverLevel
+                && protectedByRaid(serverLevel, event.getPos(), event.getState())) {
+            event.setCanceled(true);
+            return;
+        }
         // The event fires before destruction, so the block entity is still in the world
         handleBlockGriefing(destroyer, event.getPos(), event.getState(), destroyer.level().getBlockEntity(event.getPos()));
     }
 
     @SubscribeEvent
     public void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (enforceFlagBreakProtection(event)) {
+            return;
+        }
         handleBlockGriefing(event.getPlayer(), event.getPos(), event.getState(), event.getLevel().getBlockEntity(event.getPos()));
     }
 
     @SubscribeEvent
     public void onExplosionDetonate(ExplosionEvent.Detonate event) {
+        // A flag under attack and its victory banners shrug off every explosion
+        // for the raid's duration, no matter who set it off
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            event.getAffectedBlocks().removeIf(pos ->
+                    protectedByRaid(serverLevel, pos, serverLevel.getBlockState(pos)));
+        }
         Explosion explosion = event.getExplosion();
         // Prefer the entity that indirectly caused the explosion (e.g. the player who ignited the TNT)
         Entity responsible = explosion.getIndirectSourceEntity();
@@ -179,6 +194,96 @@ public class BaseBusterEventBus {
     }
 
     /**
+     * Cancels a player break that flag protection forbids: a flag being raided
+     * (or one of its victory banners) cannot be broken at all except by
+     * Creative-mode players, and non-Creative players can only break flags and
+     * attached banners they own.
+     *
+     * @return whether the event was canceled
+     */
+    private boolean enforceFlagBreakProtection(BlockEvent.BreakEvent event) {
+        Player player = event.getPlayer();
+        if (player.isCreative() || !(event.getLevel() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+        BlockPos pos = event.getPos();
+        BlockState state = event.getState();
+        if (state.getBlock() instanceof BaseFlagBlock) {
+            return guardFlagBreak(event, serverLevel, pos, player, pos);
+        }
+        if (VictoryBannerBlock.victoryBannerTier(state) > 0) {
+            BlockPos flagPos = nearestCoveringFlag(serverLevel, pos);
+            if (flagPos != null) {
+                return guardFlagBreak(event, serverLevel, flagPos, player, pos);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Applies the break rules for {@code brokenPos}, which is either the flag
+     * at {@code flagPos} or a victory banner inside its protection radius.
+     *
+     * @return whether the break is forbidden
+     */
+    private boolean guardFlagBreak(BlockEvent.BreakEvent event, ServerLevel level, BlockPos flagPos, Player player, BlockPos brokenPos) {
+        if (RaidSpawner.isRaidInProgress(level, flagPos)) {
+            denyBreak(event, player, brokenPos.equals(flagPos)
+                    ? "This flag cannot be broken while a raid is attacking it."
+                    : "This banner cannot be broken while a raid is attacking its flag.");
+            return true;
+        }
+        BaseFlagBlockEntity flagEntity = level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity entity
+                ? entity
+                : null;
+        Player owner = flagEntity != null ? flagEntity.getOwner() : null;
+        if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+            denyBreak(event, player, brokenPos.equals(flagPos)
+                    ? "You cannot break a flag you do not own."
+                    : "You cannot break banners attached to a flag you do not own.");
+            return true;
+        }
+        return false;
+    }
+
+    private static void denyBreak(BlockEvent.BreakEvent event, Player player, String message) {
+        event.setCanceled(true);
+        player.displayClientMessage(Component.literal(message).withStyle(ChatFormatting.RED), true);
+    }
+
+    /**
+     * Whether a raid currently protects the block at {@code pos}: it is a flag
+     * under attack, or a victory banner attached to a flag under attack.
+     */
+    private static boolean protectedByRaid(ServerLevel level, BlockPos pos, BlockState state) {
+        BlockPos flagPos;
+        if (state.getBlock() instanceof BaseFlagBlock) {
+            flagPos = pos;
+        } else if (VictoryBannerBlock.victoryBannerTier(state) > 0) {
+            flagPos = nearestCoveringFlag(level, pos);
+        } else {
+            return false;
+        }
+        return flagPos != null && RaidSpawner.isRaidInProgress(level, flagPos);
+    }
+
+    /**
+     * The nearest registered flag whose protection radius covers {@code pos};
+     * a farther higher-level flag can cover a spot a nearer lower-level flag
+     * cannot. Null when no flag's sphere reaches the position.
+     */
+    @Nullable
+    private static BlockPos nearestCoveringFlag(ServerLevel level, BlockPos pos) {
+        double maxRadiusSqr = Math.pow(BaseFlagBlock.MAX_PROTECTION_RADIUS, 2);
+        return FlagsSavedData.getFromLevel(level).getFlagLocations().stream()
+                .filter(flagPos -> flagPos.distSqr(pos) <= maxRadiusSqr)
+                .filter(flagPos -> flagPos.distSqr(pos)
+                        <= Math.pow(BaseFlagBlock.protectionRadius(level, flagPos), 2))
+                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(pos)))
+                .orElse(null);
+    }
+
+    /**
      * Determines whether a block destroyed by a known entity falls under a nearby flag's protection.
      * If the culprit doesn't own the protecting flag, the block is registered as a repair target
      * so the flag can restore it later.
@@ -210,19 +315,9 @@ public class BaseBusterEventBus {
         }
 
         // See if there's a flag nearby
-        FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
-        Set<BlockPos> flagLocations = flagsSavedData.getFlagLocations();
-
         // The flag that handles the grief report is the nearest one whose own
-        // radius reaches the broken block; a farther higher-level flag can
-        // cover a spot a nearer lower-level flag cannot
-        double maxRadiusSqr = Math.pow(BaseFlagBlock.MAX_PROTECTION_RADIUS, 2);
-        BlockPos nearestFlag = flagLocations.stream()
-                .filter(flagPos -> flagPos.distSqr(pos) <= maxRadiusSqr)
-                .filter(flagPos -> flagPos.distSqr(pos)
-                        <= Math.pow(BaseFlagBlock.protectionRadius(serverLevel, flagPos), 2))
-                .min(Comparator.comparingDouble(flagLocation -> flagLocation.distSqr(pos)))
-                .orElse(null);
+        // radius reaches the broken block
+        BlockPos nearestFlag = nearestCoveringFlag(serverLevel, pos);
         if (nearestFlag == null) {
             return false;
         }

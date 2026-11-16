@@ -489,7 +489,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * clearing any raider faction ownership and captured appearance.
      *
      * @return whether the click was handled as a capture attempt (false when the
-     *         clicker already owns the flag)
+     *         clicker already owns the flag or the flag belongs to another player)
      */
     public boolean advancePlayerCapture(Player player) {
         if (!(this.level instanceof ServerLevel serverLevel)) {
@@ -498,6 +498,15 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
         Player currentOwner = this.getOwner();
         if (currentOwner != null && currentOwner.getUUID().equals(player.getUUID())) {
+            return false;
+        }
+
+        // Flags owned by another player can't be captured at all
+        if (currentOwner != null) {
+            player.displayClientMessage(
+                    Component.literal("You cannot capture a flag owned by another player.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
             return false;
         }
 

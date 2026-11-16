@@ -23,6 +23,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.PathNavigationRegion;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.pathfinder.Path;
@@ -112,6 +113,9 @@ public final class RaidSpawner {
     private static final int REGION_PADDING = 16;
     // Cap on path length and distance from the start, generous for detours
     private static final int MAX_RANGE_MULTIPLIER = 4;
+    // How far from a flag isRaidInProgress looks for bosses attacking it;
+    // generous so bosses knocked far off their squad route still count
+    private static final double RAID_TARGET_SCAN_RADIUS = 256.0;
 
     private RaidSpawner() {
     }
@@ -325,6 +329,7 @@ public final class RaidSpawner {
         // tell when it's the last one standing
         UUID raidId = UUID.randomUUID();
         boss.setRaidId(raidId);
+        boss.setRaidTarget(flagPos);
         boss.setRaidTier(raidTier);
 
         spawnMember(level, boss, spots.get(0));
@@ -340,6 +345,7 @@ public final class RaidSpawner {
                 continue;
             }
             extra.setRaidId(raidId);
+            extra.setRaidTarget(flagPos);
             extra.setRaidTier(raidTier);
             extra.setSkin(RaiderSkin.ZOMBIE);
             spawnMember(level, extra, findSafeSpawnNear(level, extra, spots.get(i % spots.size()), spreadRadius, random));
@@ -373,6 +379,20 @@ public final class RaidSpawner {
         }
         level.playSound(null, flagPos, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
         BaseBuster.LOGGER.info("Raid of {} in {} group(s) spawned at {} targeting flag at {}", partySize, spots.size(), spots, flagPos);
+    }
+
+    /**
+     * Whether a raid is currently attacking the flag at {@code flagPos}: any
+     * living raid boss whose stored raid target is that flag. Egg/summon-spawned
+     * bosses carry no raid id and never count.
+     */
+    public static boolean isRaidInProgress(ServerLevel level, BlockPos flagPos) {
+        return !level.getEntities(
+                EntityTypeTest.forClass(RaiderBossEntity.class),
+                new AABB(flagPos).inflate(RAID_TARGET_SCAN_RADIUS),
+                boss -> boss.getRaidId() != null
+                        && flagPos.equals(boss.getRaidTarget())
+                        && !boss.isDeadOrDying()).isEmpty();
     }
 
     /**

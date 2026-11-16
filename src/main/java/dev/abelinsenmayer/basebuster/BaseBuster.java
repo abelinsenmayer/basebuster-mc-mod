@@ -40,6 +40,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.material.PushReaction;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -115,7 +116,9 @@ public class BaseBuster {
             VICTORY_BANNER_TIER1_ITEM, VICTORY_BANNER_TIER2_ITEM, VICTORY_BANNER_TIER3_ITEM,
             VICTORY_BANNER_TIER4_ITEM, VICTORY_BANNER_TIER5_ITEM);
 
-    // Same physical properties as a vanilla banner
+    // Same physical properties as a vanilla banner, plus PushReaction.BLOCK so
+    // pistons can't push or pop them off and flowing liquids can't wash them
+    // away -- trophies stay put, raid or no raid
     private static BlockBehaviour.Properties bannerProperties() {
         return BlockBehaviour.Properties.of()
                 .mapColor(MapColor.WOOD)
@@ -123,7 +126,8 @@ public class BaseBuster {
                 .instrument(NoteBlockInstrument.BASS)
                 .noCollission()
                 .strength(1.0F)
-                .ignitedByLava();
+                .ignitedByLava()
+                .pushReaction(PushReaction.BLOCK);
     }
 
     // The raider entity: behaves like a zombie but does not burn in sunlight.

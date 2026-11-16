@@ -34,6 +34,7 @@ public class RaiderBossEntity extends RaiderEntity {
     // Base zombie height is 1.95 blocks; 1.95 * SCALE ~= 2.5
     private static final double BOSS_SCALE = 2.5 / 1.95;
     private static final String RAID_TAG = "RaidId";
+    private static final String RAID_TARGET_TAG = "RaidTarget";
     // The squad path mirrored to clients (as packed BlockPos longs) for the
     // debug overlay; entity data has no list type, so it rides a CompoundTag
     private static final EntityDataAccessor<CompoundTag> DATA_SQUAD_PATH =
@@ -52,6 +53,10 @@ public class RaiderBossEntity extends RaiderEntity {
     // not part of a raid and never drop a banner
     @Nullable
     private UUID raidId;
+    // The flag this boss's raid is attacking. Set at raid spawn and persisted
+    // like raidId; break protection scans living bosses for this target
+    @Nullable
+    private BlockPos raidTarget;
     // Rough route to squadPathTarget assigned at raid spawn, consumed by
     // FollowSquadPathGoal. Immutable snapshots, persisted so a squad keeps
     // its route across world reloads
@@ -235,6 +240,17 @@ public class RaiderBossEntity extends RaiderEntity {
         this.raidId = raidId;
     }
 
+    /** The flag this boss's raid is attacking; null for non-raid bosses. */
+    @Nullable
+    public BlockPos getRaidTarget() {
+        return this.raidTarget;
+    }
+
+    /** Marks the flag this boss's raid is attacking; RaidSpawner sets it alongside the raid id. */
+    public void setRaidTarget(BlockPos raidTarget) {
+        this.raidTarget = raidTarget.immutable();
+    }
+
     @Override
     protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit);
@@ -267,6 +283,9 @@ public class RaiderBossEntity extends RaiderEntity {
         if (this.raidId != null) {
             tag.putUUID(RAID_TAG, this.raidId);
         }
+        if (this.raidTarget != null) {
+            tag.putLong(RAID_TARGET_TAG, this.raidTarget.asLong());
+        }
         if (!this.squadPath.isEmpty()) {
             tag.putLongArray(SQUAD_PATH_SAVE_TAG,
                     this.squadPath.stream().mapToLong(BlockPos::asLong).toArray());
@@ -284,6 +303,9 @@ public class RaiderBossEntity extends RaiderEntity {
         super.readAdditionalSaveData(tag);
         if (tag.hasUUID(RAID_TAG)) {
             this.raidId = tag.getUUID(RAID_TAG);
+        }
+        if (tag.contains(RAID_TARGET_TAG, Tag.TAG_LONG)) {
+            this.raidTarget = BlockPos.of(tag.getLong(RAID_TARGET_TAG));
         }
         // Path and target are written together; a stray partial pair isn't
         // worth resurrecting
