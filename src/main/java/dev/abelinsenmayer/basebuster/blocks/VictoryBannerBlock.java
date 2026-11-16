@@ -125,8 +125,10 @@ public class VictoryBannerBlock extends BannerBlock {
         return stack;
     }
 
+    // Package-private: BaseFlagBlock restores the vanilla black-banner entry
+    // the same way, since it registers as the BLACK BannerBlock
     @SuppressWarnings("unchecked")
-    private static void restoreVanillaColorEntry(DyeColor color) {
+    static void restoreVanillaColorEntry(DyeColor color) {
         try {
             Field byColorField = BannerBlock.class.getDeclaredField("BY_COLOR");
             byColorField.setAccessible(true);

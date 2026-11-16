@@ -46,5 +46,7 @@ public class BaseBusterClient {
         // theme per raid, egg/summon spawns get a random skin per entity
         event.registerEntityRenderer(BaseBuster.RAIDER.get(), RaiderRenderer::new);
         event.registerEntityRenderer(BaseBuster.RAIDER_BOSS.get(), RaiderRenderer::new);
+        // The flag renders as a black banner (red once raiders capture it)
+        event.registerBlockEntityRenderer(BaseBuster.BASE_FLAG_BLOCK_ENTITY.get(), BaseFlagRenderer::new);
     }
 }

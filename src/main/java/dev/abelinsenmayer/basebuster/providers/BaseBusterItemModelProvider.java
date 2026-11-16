@@ -14,7 +14,9 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
 
     @Override
     protected void registerModels() {
-        withExistingParent(BaseBuster.BASE_FLAG_BLOCK_ITEM.getId().toString(), modLoc("block/base_flag_block"));
+        // The flag is a banner block: its item renders through
+        // BlockEntityWithoutLevelRenderer like the victory banners
+        bannerItem(BaseBuster.BASE_FLAG_BLOCK_ITEM);
         handheldWithTexture(BaseBuster.STONE_REPAIR_HAMMER, "item/stone_shovel");
         handheldWithTexture(BaseBuster.IRON_REPAIR_HAMMER, "item/iron_shovel");
         handheldWithTexture(BaseBuster.DIAMOND_REPAIR_HAMMER, "item/diamond_shovel");

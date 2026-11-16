@@ -19,6 +19,16 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
 
     @Override
     protected void addTranslations() {
+        this.add("itemGroup.basebuster", "Base Buster");
+
+        this.add("basebuster.configuration.title", "Base Buster Configs");
+        this.add("basebuster.configuration.section.basebuster.common.toml", "Base Buster Configs");
+        this.add("basebuster.configuration.section.basebuster.common.toml.title", "Base Buster Configs");
+        this.add("basebuster.configuration.items", "Item List");
+        this.add("basebuster.configuration.logDirtBlock", "Log Dirt Block");
+        this.add("basebuster.configuration.magicNumberIntroduction", "Magic Number Text");
+        this.add("basebuster.configuration.magicNumber", "Magic Number");
+
         this.addBlock(BaseBuster.BASE_FLAG_BLOCK, "Base Flag");
         this.addItem(BaseBuster.STONE_REPAIR_HAMMER, "Stone Repair Hammer");
         this.addItem(BaseBuster.IRON_REPAIR_HAMMER, "Iron Repair Hammer");

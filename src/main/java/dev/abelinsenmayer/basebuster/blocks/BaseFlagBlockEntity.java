@@ -12,18 +12,19 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.level.block.entity.BannerBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
@@ -35,7 +36,7 @@ import java.util.UUID;
 
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
 
-public class BaseFlagBlockEntity extends BlockEntity {
+public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Faction name assigned to flags captured by raiders
     public static final String RAIDER_FACTION = "RAIDERS";
     // Segments rendered as '=' in the owner's capture progress bar
@@ -88,7 +89,24 @@ public class BaseFlagBlockEntity extends BlockEntity {
     private long lastPlayerCaptureTick = -1L;
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
-        super(BASE_FLAG_BLOCK_ENTITY.get(), pos, blockState);
+        // BannerBlockEntity hardcodes the vanilla BANNER type internally; we
+        // report our own type via getType() so save/load still round-trips
+        // through this class, while BannerRenderer sees a BannerBlockEntity.
+        super(pos, blockState);
+    }
+
+    @Override
+    public BlockEntityType<?> getType() {
+        return BASE_FLAG_BLOCK_ENTITY.get();
+    }
+
+    @Override
+    public DyeColor getBaseColor() {
+        // Black banner while held, red once raiders capture it
+        BlockState state = getBlockState();
+        return state.hasProperty(BaseFlagBlock.CAPTURED) && state.getValue(BaseFlagBlock.CAPTURED)
+                ? DyeColor.RED
+                : DyeColor.BLACK;
     }
 
     public Component getInfoForDisplay() {
@@ -564,7 +582,7 @@ public class BaseFlagBlockEntity extends BlockEntity {
     }
 
     @Override
-    public Packet<ClientGamePacketListener> getUpdatePacket() {
+    public ClientboundBlockEntityDataPacket getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
     }
 

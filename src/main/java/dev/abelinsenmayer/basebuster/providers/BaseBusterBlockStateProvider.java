@@ -16,13 +16,10 @@ public class BaseBusterBlockStateProvider extends BlockStateProvider {
 
     @Override
     protected void registerStatesAndModels() {
-        // The flag borrows vanilla wool textures: white while owned, red once captured
-        var uncaptured = models().withExistingParent("base_flag_block", this.mcLoc("block/white_wool"));
-        var captured = models().withExistingParent("base_flag_block_captured", this.mcLoc("block/red_wool"));
-        this.getVariantBuilder(BaseBuster.BASE_FLAG_BLOCK.get())
-                .forAllStates(state -> ConfiguredModel.builder()
-                        .modelFile(state.getValue(BaseFlagBlock.CAPTURED) ? captured : uncaptured)
-                        .build());
+        // The flag renders through the banner block entity renderer too, so
+        // every variant (all rotation/captured combinations) points at the
+        // vanilla block/banner model
+        bannerStates(BaseBuster.BASE_FLAG_BLOCK);
 
         // Victory banners render through the banner block entity renderer, so
         // every variant points at the vanilla block/banner model like vanilla's

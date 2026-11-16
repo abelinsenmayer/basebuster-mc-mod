@@ -1,10 +1,100 @@
 {
   "variants": {
-    "captured=false": {
-      "model": "basebuster:block/base_flag_block"
+    "captured=false,rotation=0": {
+      "model": "minecraft:block/banner"
     },
-    "captured=true": {
-      "model": "basebuster:block/base_flag_block_captured"
+    "captured=false,rotation=1": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=10": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=11": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=12": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=13": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=14": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=15": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=2": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=3": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=4": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=5": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=6": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=7": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=8": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=false,rotation=9": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=0": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=1": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=10": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=11": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=12": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=13": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=14": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=15": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=2": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=3": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=4": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=5": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=6": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=7": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=8": {
+      "model": "minecraft:block/banner"
+    },
+    "captured=true,rotation=9": {
+      "model": "minecraft:block/banner"
     }
   }
 }

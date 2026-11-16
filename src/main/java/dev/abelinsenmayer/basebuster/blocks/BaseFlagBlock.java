@@ -11,12 +11,17 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.util.Mth;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Tier;
 import net.minecraft.world.item.Tiers;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -29,13 +34,14 @@ import net.minecraft.world.phys.BlockHitResult;
 
 import javax.annotation.Nullable;
 
-public class BaseFlagBlock extends Block implements EntityBlock {
+public class BaseFlagBlock extends BannerBlock implements EntityBlock {
     public static final int FLAG_PROTECTION_RADIUS = 120;
-    // True once raiders capture the flag; renders as red wool instead of white
+    // True once raiders capture the flag; renders as a red banner instead of black
     public static final BooleanProperty CAPTURED = BooleanProperty.create("captured");
 
     public BaseFlagBlock(Properties properties) {
         super(
+                DyeColor.BLACK,
                 Properties.of()
                         .mapColor(MapColor.WOOL)
                         .noCollission()
@@ -45,11 +51,30 @@ public class BaseFlagBlock extends Block implements EntityBlock {
                         .pushReaction(PushReaction.BLOCK)
         );
         this.registerDefaultState(this.stateDefinition.any().setValue(CAPTURED, false));
+        // BannerBlock's constructor inserts this block into its private static
+        // BY_COLOR map, which BannerBlockEntity#getItem consults. Restore the
+        // vanilla black-banner entry, same as VictoryBannerBlock does per tier.
+        VictoryBannerBlock.restoreVanillaColorEntry(DyeColor.BLACK);
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
         builder.add(CAPTURED);
+    }
+
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        // Face the player on placement, same as BannerItem's standing placement
+        return this.defaultBlockState()
+                .setValue(ROTATION, Mth.floor((180.0F + context.getRotation()) * 16.0F / 360.0F) % 16);
+    }
+
+    @Override
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
+        // AbstractBannerBlock resolves clones through BannerBlock.byColor, which
+        // maps BLACK back to the vanilla banner; hand back our item instead
+        return VictoryBannerBlock.victoryBannerStack(this, level, pos);
     }
 
     @Override

@@ -1,4 +1,11 @@
 {
+  "basebuster.configuration.items": "Item List",
+  "basebuster.configuration.logDirtBlock": "Log Dirt Block",
+  "basebuster.configuration.magicNumber": "Magic Number",
+  "basebuster.configuration.magicNumberIntroduction": "Magic Number Text",
+  "basebuster.configuration.section.basebuster.common.toml": "Base Buster Configs",
+  "basebuster.configuration.section.basebuster.common.toml.title": "Base Buster Configs",
+  "basebuster.configuration.title": "Base Buster Configs",
   "block.basebuster.base_flag_block": "Base Flag",
   "block.basebuster.victory_banner_tier1": "Victory Banner (Tier 1)",
   "block.basebuster.victory_banner_tier2": "Victory Banner (Tier 2)",
@@ -12,5 +19,6 @@
   "item.basebuster.raid_spawner": "Raid Spawner",
   "item.basebuster.raider_boss_spawn_egg": "Raider Boss Spawn Egg",
   "item.basebuster.raider_spawn_egg": "Raider Spawn Egg",
-  "item.basebuster.stone_repair_hammer": "Stone Repair Hammer"
+  "item.basebuster.stone_repair_hammer": "Stone Repair Hammer",
+  "itemGroup.basebuster": "Base Buster"
 }

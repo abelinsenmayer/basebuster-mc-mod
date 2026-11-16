@@ -29,14 +29,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Tiers;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
@@ -50,7 +48,6 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.DeferredSpawnEggItem;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BlockEntityTypeAddBlocksEvent;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
@@ -76,11 +73,6 @@ public class BaseBuster {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, BaseBuster.MODID);
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister.create(Registries.ENTITY_TYPE, BaseBuster.MODID);
-
-    // Creates a new Block with the id "basebuster:example_block", combining the namespace and path
-    public static final DeferredBlock<Block> EXAMPLE_BLOCK = BLOCKS.registerSimpleBlock("example_block", BlockBehaviour.Properties.of().mapColor(MapColor.STONE));
-    // Creates a new BlockItem with the id "basebuster:example_block", combining the namespace and path
-    public static final DeferredItem<BlockItem> EXAMPLE_BLOCK_ITEM = ITEMS.registerSimpleBlockItem("example_block", EXAMPLE_BLOCK);
 
     public static final DeferredBlock<BaseFlagBlock> BASE_FLAG_BLOCK = BLOCKS.register("base_flag_block", () -> new BaseFlagBlock(BlockBehaviour.Properties.of()));
     public static final DeferredItem<BlockItem> BASE_FLAG_BLOCK_ITEM = ITEMS.registerSimpleBlockItem("base_flag_block", BASE_FLAG_BLOCK);
@@ -155,12 +147,8 @@ public class BaseBuster {
     public static final DeferredItem<DeferredSpawnEggItem> RAIDER_BOSS_SPAWN_EGG = ITEMS.register("raider_boss_spawn_egg",
             () -> new DeferredSpawnEggItem(RAIDER_BOSS, 0x6B5637, 0x3E2F1E, new Item.Properties()));
 
-    // Creates a new food item with the id "basebuster:example_id", nutrition 1 and saturation 2
-    public static final DeferredItem<Item> EXAMPLE_ITEM = ITEMS.registerSimpleItem("example_item", new Item.Properties().food(new FoodProperties.Builder()
-            .alwaysEdible().nutrition(1).saturationModifier(2f).build()));
-
-    // Creates a creative tab with the id "basebuster:example_tab" for the example item, that is placed after the combat tab
-    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
+    // The mod's creative tab, placed after the combat tab
+    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> BASEBUSTER_TAB = CREATIVE_MODE_TABS.register("basebuster_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.basebuster")) //The language key for the title of your CreativeModeTab
             .withTabsBefore(CreativeModeTabs.COMBAT)
             .icon(() -> BASE_FLAG_BLOCK_ITEM.get().getDefaultInstance())
@@ -211,8 +199,6 @@ public class BaseBuster {
         // Do not add this line if there are no @SubscribeEvent-annotated functions in this class, like onServerStarting() below.
         NeoForge.EVENT_BUS.register(this);
 
-        // Register the item to a creative tab
-        modEventBus.addListener(this::addCreative);
         modEventBus.addListener(this::onGatherData);
         modEventBus.addListener(this::onRegisterEntityAttributes);
         modEventBus.addListener(this::onAddBannerBlocks);
@@ -234,13 +220,6 @@ public class BaseBuster {
         LOGGER.info("{}{}", Config.MAGIC_NUMBER_INTRODUCTION.get(), Config.MAGIC_NUMBER.getAsInt());
 
         Config.ITEM_STRINGS.get().forEach((item) -> LOGGER.info("ITEM >> {}", item));
-    }
-
-    // Add the example block item to the building blocks tab
-    private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
-            event.accept(EXAMPLE_BLOCK_ITEM);
-        }
     }
 
     // Victory banners reuse the vanilla banner block entity; make its type
