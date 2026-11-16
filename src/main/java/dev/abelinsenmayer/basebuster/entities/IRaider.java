@@ -1,5 +1,6 @@
 package dev.abelinsenmayer.basebuster.entities;
 
+import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -58,6 +59,29 @@ public interface IRaider {
     /** Tags this raider with its raid's tier; set before finalizeSpawn so
      *  the kit equips the tier's loadout. */
     void setRaidTier(int raidTier);
+
+    /**
+     * Whether this raider species may place new scaffolding while pathing --
+     * the world-changing move behind both bridge nodes over gaps and pillar
+     * climbs up walls. Traversing scaffolding that already exists (and
+     * climbing ladders or vines) is always allowed; this only gates the
+     * placement. Stacks with the global
+     * {@link Config#RAIDER_SCAFFOLDING_ENABLED} toggle.
+     */
+    default boolean canScaffold() {
+        return true;
+    }
+
+    /**
+     * Whether this raider species may dig through breakable obstructions --
+     * the horizontal tunnel and dig-down node emissions, and the block
+     * breaking that executes them. Stacks with the global
+     * {@link Config#RAIDER_TUNNELING_ENABLED} toggle and the mobGriefing game
+     * rule.
+     */
+    default boolean canTunnel() {
+        return true;
+    }
 
     /**
      * Whether the raider is on an assault: a flag not owned by the raider

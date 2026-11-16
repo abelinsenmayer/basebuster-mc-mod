@@ -95,6 +95,13 @@ public class RaiderRavagerEntity extends Ravager implements IRaider {
     }
 
     @Override
+    public boolean canScaffold() {
+        // Too bulky to raise scaffolding; ravagers bridge nothing and rely on
+        // tunneling (and their squadmates' pillars) instead
+        return false;
+    }
+
+    @Override
     @Nullable
     public IRaiderBoss getSquadLeader() {
         return this.raider.getSquadLeader();

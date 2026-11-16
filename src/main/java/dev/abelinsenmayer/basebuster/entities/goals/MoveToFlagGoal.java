@@ -188,8 +188,10 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
             return;
         }
         // Digging destroys world blocks -- bail (clearing any crack overlays)
-        // if mob griefing is disallowed
-        if (!level.getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+        // if mob griefing is disallowed, or if this species never tunnels
+        // (evokers path around obstructions instead of digging through them)
+        if (!level.getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)
+                || (this.mob instanceof IRaider raider && !raider.canTunnel())) {
             this.resetBreaking(level);
             return;
         }
@@ -403,6 +405,11 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
      * air: the scaffold always lands dry.
      */
     private void ensureScaffolding(ServerLevel level, BlockPos pos) {
+        // Per-species opt-out: ravagers still climb and descend scaffolding
+        // that's already there, but never place it themselves
+        if (this.mob instanceof IRaider raider && !raider.canScaffold()) {
+            return;
+        }
         BlockState state = level.getBlockState(pos);
         if (state.getBlock() instanceof ScaffoldingBlock) {
             return;

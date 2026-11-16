@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.pathfinding;
 
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -353,12 +354,26 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
     }
 
     /**
-     * Whether raiders may place new scaffolding: a config toggle covering both
-     * synthetic moves that need it (bridging and pillaring). Traversing
-     * existing scaffolding and climbables stays legal either way.
+     * Whether this mob may place new scaffolding: a config toggle covers the
+     * synthetic moves that need it (bridging and pillaring), and
+     * {@link IRaider#canScaffold} lets individual species opt out of
+     * placement. Traversing existing scaffolding and climbables stays legal
+     * either way.
      */
     private boolean scaffoldingEnabled() {
-        return Config.RAIDER_SCAFFOLDING_ENABLED.get();
+        return Config.RAIDER_SCAFFOLDING_ENABLED.get()
+                && (!(this.mob instanceof IRaider raider) || raider.canScaffold());
+    }
+
+    /**
+     * Whether this mob may dig: tunneling is a config toggle, the mobGriefing
+     * game rule applies since digging destroys world blocks, and
+     * {@link IRaider#canTunnel} lets individual species opt out entirely.
+     */
+    private boolean tunnelingEnabled() {
+        return Config.RAIDER_TUNNELING_ENABLED.get()
+                && this.mob.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)
+                && (!(this.mob instanceof IRaider raider) || raider.canTunnel());
     }
 
     private boolean isScaffolding(int x, int y, int z) {
@@ -496,10 +511,7 @@ public class RaiderNodeEvaluator extends WalkNodeEvaluator {
      * column is not obstructed or contains an unbreakable obstruction.
      */
     private float tunnelMalus(int x, int y, int z) {
-        // Tunneling is a config toggle, and digging additionally requires mob
-        // griefing since it destroys world blocks
-        if (!Config.RAIDER_TUNNELING_ENABLED.get()
-                || !this.mob.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+        if (!this.tunnelingEnabled()) {
             return -1.0F;
         }
         float hardness = 0.0F;

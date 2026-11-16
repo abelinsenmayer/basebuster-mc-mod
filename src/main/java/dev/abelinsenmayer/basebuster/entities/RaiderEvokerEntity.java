@@ -92,6 +92,12 @@ public class RaiderEvokerEntity extends Evoker implements IRaider {
     }
 
     @Override
+    public boolean canTunnel() {
+        // Squishy casters path around obstructions instead of digging through
+        return false;
+    }
+
+    @Override
     @Nullable
     public IRaiderBoss getSquadLeader() {
         return this.raider.getSquadLeader();
