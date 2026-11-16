@@ -1,8 +1,4 @@
 {
-  "basebuster.configuration.items": "Item List",
-  "basebuster.configuration.logDirtBlock": "Log Dirt Block",
-  "basebuster.configuration.magicNumber": "Magic Number",
-  "basebuster.configuration.magicNumberIntroduction": "Magic Number Text",
   "basebuster.configuration.section.basebuster.common.toml": "Base Buster Configs",
   "basebuster.configuration.section.basebuster.common.toml.title": "Base Buster Configs",
   "basebuster.configuration.title": "Base Buster Configs",
