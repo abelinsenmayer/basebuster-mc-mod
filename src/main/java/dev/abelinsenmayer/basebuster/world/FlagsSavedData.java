@@ -21,6 +21,7 @@ public class FlagsSavedData extends SavedData {
     private Set<BlockPos> capturedFlagLocations = new HashSet<>();
     // Player id -> banner design they last stamped on one of their flags.
     // Applied to every flag they own, including ones they place later.
+    // Stored only on the overworld's copy of this data (see getOverworld).
     private Map<UUID, FlagDesign> playerDesigns = new HashMap<>();
 
     /** A banner design stamped on a flag: base color plus pattern layers. */
@@ -126,5 +127,14 @@ public class FlagsSavedData extends SavedData {
 
     public static FlagsSavedData getFromLevel(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(new Factory<>(FlagsSavedData::create, FlagsSavedData::load), "basebuster_flags");
+    }
+
+    /**
+     * The overworld's flags data, fetched from any dimension. Per-player flag
+     * designs live here so they follow players across dimensions; flag
+     * locations stay per-dimension via {@link #getFromLevel}.
+     */
+    public static FlagsSavedData getOverworld(ServerLevel level) {
+        return getFromLevel(level.getServer().overworld());
     }
 }

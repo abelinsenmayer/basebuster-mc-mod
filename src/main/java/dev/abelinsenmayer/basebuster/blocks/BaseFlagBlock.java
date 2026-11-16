@@ -242,24 +242,27 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                 FlagsSavedData.FlagDesign design = blockEntity.applyBannerDesign(stack);
                 level.sendBlockUpdated(pos, state, state, 3);
 
-                // Remember the design: every flag the player owns takes it on,
+                // Remember the design on the overworld's data so it follows the
+                // player across dimensions: every flag they own takes it on,
                 // including flags they place or capture later (see setOwner)
-                ServerLevel serverLevel = (ServerLevel) level;
-                FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
-                flagsSavedData.setPlayerDesign(player.getUUID(), design);
-                for (BlockPos flagPos : flagsSavedData.getFlagLocations()) {
-                    // Flags in unloaded chunks aren't touched here (same
-                    // no-chunk-loading stance as protectionRadiusIfLoaded);
-                    // they pick up the design when they load -- see
-                    // BaseFlagBlockEntity#syncOwnerDesign
-                    if (flagPos.equals(pos) || !serverLevel.hasChunkAt(flagPos)) {
-                        continue;
-                    }
-                    if (serverLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity other
-                            && other.getOwner() != null
-                            && other.getOwner().getUUID().equals(player.getUUID())) {
-                        other.applyDesign(design.color(), design.patterns());
-                        serverLevel.sendBlockUpdated(flagPos, other.getBlockState(), other.getBlockState(), 3);
+                FlagsSavedData.getOverworld((ServerLevel) level)
+                        .setPlayerDesign(player.getUUID(), design);
+                for (ServerLevel flagLevel : level.getServer().getAllLevels()) {
+                    for (BlockPos flagPos : FlagsSavedData.getFromLevel(flagLevel).getFlagLocations()) {
+                        // Flags in unloaded chunks aren't touched here (same
+                        // no-chunk-loading stance as protectionRadiusIfLoaded);
+                        // they pick up the design when they load -- see
+                        // BaseFlagBlockEntity#syncOwnerDesign
+                        if ((flagLevel == level && flagPos.equals(pos))
+                                || !flagLevel.hasChunkAt(flagPos)) {
+                            continue;
+                        }
+                        if (flagLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity other
+                                && other.getOwner() != null
+                                && other.getOwner().getUUID().equals(player.getUUID())) {
+                            other.applyDesign(design.color(), design.patterns());
+                            flagLevel.sendBlockUpdated(flagPos, other.getBlockState(), other.getBlockState(), 3);
+                        }
                     }
                 }
                 if (!player.hasInfiniteMaterials()) {

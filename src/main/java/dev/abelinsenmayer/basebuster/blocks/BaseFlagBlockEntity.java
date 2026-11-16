@@ -243,7 +243,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return;
         }
         FlagsSavedData.FlagDesign design =
-                FlagsSavedData.getFromLevel(serverLevel).getPlayerDesign(this.ownerUuid);
+                FlagsSavedData.getOverworld(serverLevel).getPlayerDesign(this.ownerUuid);
         if (design == null) {
             return;
         }
@@ -694,7 +694,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             // The flag takes on the banner design its new owner last stamped
             // on one of their flags, if any
             FlagsSavedData.FlagDesign design =
-                    FlagsSavedData.getFromLevel(serverLevel).getPlayerDesign(player.getUUID());
+                    FlagsSavedData.getOverworld(serverLevel).getPlayerDesign(player.getUUID());
             if (design != null) {
                 this.applyDesign(design.color(), design.patterns());
             }
