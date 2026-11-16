@@ -41,7 +41,7 @@ import javax.annotation.Nullable;
 public class BaseFlagBlock extends BannerBlock implements EntityBlock {
     // Protection radius per base level (see BaseFlagBlockEntity#LEVEL_REQUIREMENTS);
     // levels beyond the table clamp to the last entry
-    private static final int[] PROTECTION_RADII = {16, 32, 48, 64, 128};
+    private static final int[] PROTECTION_RADII = {32, 48, 64, 80, 96};
     // Largest radius a flag can reach; used as the scan bound wherever any flag's
     // sphere could apply (banner level scans, candidate prefilters)
     public static final int MAX_PROTECTION_RADIUS = PROTECTION_RADII[PROTECTION_RADII.length - 1];

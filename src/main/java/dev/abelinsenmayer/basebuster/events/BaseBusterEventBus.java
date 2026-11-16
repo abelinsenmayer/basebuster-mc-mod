@@ -93,10 +93,11 @@ public class BaseBusterEventBus {
     }
 
     /**
-     * Keeps flag protection areas from overlapping: a new flag must sit at
-     * least the sum of both flags' radii from every existing flag. The new
-     * flag always places at level 1, so its radius is the smallest entry.
-     * Cancelling also refunds the item to the placer.
+     * Keeps flag protection areas from overlapping: a new flag must sit far
+     * enough from every existing flag that their spheres can never touch,
+     * even after either side levels up. Spacing uses the max radius for the
+     * existing flag (its current level can grow) plus the new flag's level-1
+     * radius. Cancelling also refunds the item to the placer.
      */
     @SubscribeEvent
     public void onFlagPlace(BlockEvent.EntityPlaceEvent event) {
@@ -108,19 +109,15 @@ public class BaseBusterEventBus {
         }
 
         BlockPos pos = event.getPos();
-        int newFlagRadius = BaseFlagBlock.protectionRadius(1);
+        int minSeparation = BaseFlagBlock.MAX_PROTECTION_RADIUS * 2;
         BlockPos conflict = FlagsSavedData.getFromLevel(serverLevel).getFlagLocations().stream()
-                .filter(flagPos -> {
-                    double separation = BaseFlagBlock.protectionRadius(serverLevel, flagPos) + newFlagRadius;
-                    return flagPos.distSqr(pos) < separation * separation;
-                })
+                .filter(flagPos -> flagPos.distSqr(pos) < (double) minSeparation * minSeparation)
                 .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(pos)))
                 .orElse(null);
         if (conflict == null) {
             return;
         }
 
-        int minSeparation = BaseFlagBlock.protectionRadius(serverLevel, conflict) + newFlagRadius;
         event.setCanceled(true);
         if (event.getEntity() instanceof ServerPlayer player) {
             player.sendSystemMessage(Component.literal(
