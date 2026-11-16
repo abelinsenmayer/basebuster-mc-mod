@@ -1,5 +1,6 @@
 package dev.abelinsenmayer.basebuster.events;
 
+import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
@@ -12,6 +13,7 @@ import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -20,6 +22,7 @@ import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.GameRules;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
@@ -30,6 +33,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -48,6 +52,24 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         PathSearchScheduler.onServerStopping();
+    }
+
+    /**
+     * Keeps the vanilla {@code disableRaids} game rule in sync with the
+     * config. The game rule suppresses {@code Raids.createOrExtendRaid} (the
+     * sole vanilla raid trigger) and stops any raid already in progress,
+     * while leaving the raid omen effect itself fully intact.
+     */
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent event) {
+        syncDisableRaidsGameRule(event.getServer());
+    }
+
+    /** Applies the config to the {@code disableRaids} game rule; call on the server thread. */
+    public static void syncDisableRaidsGameRule(MinecraftServer server) {
+        server.getGameRules()
+                .getRule(GameRules.RULE_DISABLE_RAIDS)
+                .set(!Config.VANILLA_RAIDS_ENABLED.getAsBoolean(), server);
     }
 
     /**

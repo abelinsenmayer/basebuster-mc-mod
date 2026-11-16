@@ -55,9 +55,12 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.neoforge.common.DeferredSpawnEggItem;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import net.neoforged.neoforge.event.BlockEntityTypeAddBlocksEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -271,6 +274,7 @@ public class BaseBuster {
         modEventBus.addListener(this::onGatherData);
         modEventBus.addListener(this::onRegisterEntityAttributes);
         modEventBus.addListener(this::onAddBannerBlocks);
+        modEventBus.addListener(this::onModConfigReloaded);
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
@@ -289,6 +293,17 @@ public class BaseBuster {
         LOGGER.info("{}{}", Config.MAGIC_NUMBER_INTRODUCTION.get(), Config.MAGIC_NUMBER.getAsInt());
 
         Config.ITEM_STRINGS.get().forEach((item) -> LOGGER.info("ITEM >> {}", item));
+    }
+
+    // The config file watcher fires this off-thread; hop to the server thread
+    // before touching the game rule, which also broadcasts the change to clients
+    private void onModConfigReloaded(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == Config.SPEC) {
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                server.execute(() -> BaseBusterEventBus.syncDisableRaidsGameRule(server));
+            }
+        }
     }
 
     // Victory banners reuse the vanilla banner block entity; make its type

@@ -49,6 +49,10 @@ public class Config {
             .comment("Whether regular raiders glow perpetually, making them visible through walls")
             .define("raider.glowing", false);
 
+    public static final ModConfigSpec.DoubleValue RAIDER_MOVEMENT_SPEED = BUILDER
+            .comment("Base movement speed for illager-theme raiders (vanilla speeds: pillager/vindicator 0.35, evoker 0.5, ravager 0.3). Zombie-theme raiders ignore this and use their kit's speed instead")
+            .defineInRange("raider.movementSpeed", 0.28, 0.05, 1.0);
+
     public static final ModConfigSpec.DoubleValue RAIDER_SQUAD_SEARCH_RADIUS = BUILDER
             .comment("Distance a raider will search for a raider boss to elect as its squad leader")
             .defineInRange("raiderSquad.searchRadius", 48.0, 1.0, 256.0);
@@ -120,6 +124,10 @@ public class Config {
     public static final ModConfigSpec.DoubleValue FLAG_CAPTURE_PLAYER_PROGRESS_PER_CLICK = BUILDER
             .comment("Fraction of capture progress a player gains per right-click on a flag they don't own")
             .defineInRange("flagCapture.playerProgressPerClick", 0.02, 0.001, 1.0);
+
+    public static final ModConfigSpec.BooleanValue VANILLA_RAIDS_ENABLED = BUILDER
+            .comment("Whether vanilla village raids may trigger. When false the mod enforces the vanilla disableRaids game rule, which blocks raid creation and stops raids in progress; the raid omen effect itself is preserved for use by this mod's own raid triggers. Note the config is authoritative: it overwrites any /gamerule disableRaids change on server start or config reload")
+            .define("vanillaRaids.enabled", false);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 
