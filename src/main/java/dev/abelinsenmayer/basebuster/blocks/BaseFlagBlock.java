@@ -27,6 +27,8 @@ import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
@@ -124,6 +126,17 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new BaseFlagBlockEntity(pos, state);
+    }
+
+    @Nullable
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(
+            Level level, BlockState state, BlockEntityType<T> type) {
+        if (level.isClientSide || type != BaseBuster.BASE_FLAG_BLOCK_ENTITY.get()) {
+            return null;
+        }
+        return (BlockEntityTicker<T>) (BlockEntityTicker<BaseFlagBlockEntity>) BaseFlagBlockEntity::tick;
     }
 
     private BaseFlagBlockEntity getBlockEntity(Level level, BlockPos pos) {

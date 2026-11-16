@@ -92,6 +92,14 @@ public class Config {
             .comment("Whether to render red lines between the decimated waypoints of each living raider boss's squad path")
             .define("raiderDebug.renderSquadPath", false);
 
+    public static final ModConfigSpec.DoubleValue RAID_TIMER_MEAN_DAYS = BUILDER
+            .comment("Average Minecraft days between raid countdowns starting on each player-owned flag; each tick rolls a fresh chance, so intervals vary around this mean. 0 disables periodic raids")
+            .defineInRange("raidTimer.averageDaysBetweenRaids", 20.0, 0.0, 1000000.0);
+
+    public static final ModConfigSpec.IntValue RAID_COUNTDOWN_SECONDS = BUILDER
+            .comment("Seconds a flag's owner has to prepare between a raid warning and the raid party spawning; 0 spawns the raid immediately")
+            .defineInRange("raidTimer.countdownSeconds", 300, 0, Integer.MAX_VALUE);
+
     public static final ModConfigSpec.IntValue FLAG_CAPTURE_SECONDS = BUILDER
             .comment("Seconds for a single raider to capture a base flag")
             .defineInRange("flagCapture.seconds", 30, 1, Integer.MAX_VALUE);

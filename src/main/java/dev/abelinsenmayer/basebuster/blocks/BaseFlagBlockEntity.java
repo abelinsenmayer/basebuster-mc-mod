@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
+import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -14,12 +15,15 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
@@ -45,6 +49,12 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     private static final int NOTIFY_INTERVAL_TICKS = 10;
     // Ticks without a capture click before player capture progress resets (one second)
     private static final int PLAYER_CAPTURE_TIMEOUT_TICKS = 20;
+    // Ticks per Minecraft day, used to turn the configured mean raid interval into a per-tick chance
+    private static final int TICKS_PER_DAY = 24000;
+    // Remaining countdown at which the owner gets a final warning (30 seconds)
+    private static final int RAID_WARNING_TICKS = 30 * 20;
+    // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
+    private static final int RAID_SAVE_INTERVAL_TICKS = 20;
 
     private Player owner = null;
     private String ownerName = "NONE";
@@ -87,6 +97,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     private UUID playerCapturerId = null;
     // Game time of the capturer's most recent click
     private long lastPlayerCaptureTick = -1L;
+
+    // Ticks until a pending raid spawns; 0 means no raid is incoming
+    private int raidCountdownTicks = 0;
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         // BannerBlockEntity hardcodes the vanilla BANNER type internally; we
@@ -222,6 +235,116 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
     }
 
+    /**
+     * Server-side tick, registered by {@link BaseFlagBlock#getTicker}. While a
+     * raid countdown is pending it ticks down toward the raid's arrival;
+     * otherwise each tick rolls a fresh chance of starting one, so real
+     * intervals scatter around {@link Config#RAID_TIMER_MEAN_DAYS} rather than
+     * firing on a fixed schedule. Only flags with an online player owner roll --
+     * unowned and faction-owned flags are never raided, and the owner must be
+     * online to hear the warning.
+     */
+    public static void tick(Level level, BlockPos pos, BlockState state, BaseFlagBlockEntity blockEntity) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        if (blockEntity.raidCountdownTicks > 0) {
+            blockEntity.tickRaidCountdown(serverLevel, pos);
+            return;
+        }
+
+        double meanDays = Config.RAID_TIMER_MEAN_DAYS.get();
+        if (meanDays <= 0.0) {
+            return;
+        }
+        Player ownerPlayer = blockEntity.getOwner();
+        if (ownerPlayer == null) {
+            return;
+        }
+        if (serverLevel.getRandom().nextDouble() * meanDays * TICKS_PER_DAY >= 1.0) {
+            return;
+        }
+        // Don't stack a second raid warning on a flag already under attack
+        if (RaidSpawner.isRaidInProgress(serverLevel, pos)) {
+            return;
+        }
+        blockEntity.beginRaidCountdown(serverLevel, pos, ownerPlayer);
+    }
+
+    /**
+     * Starts this flag's raid countdown: the wither-spawn cue and the owner's
+     * warning message. A zero-second countdown skips the message and goes
+     * straight to {@link #launchRaid}.
+     */
+    private void beginRaidCountdown(ServerLevel serverLevel, BlockPos pos, Player ownerPlayer) {
+        int countdownSeconds = Config.RAID_COUNTDOWN_SECONDS.get();
+        ownerPlayer.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
+        if (countdownSeconds <= 0) {
+            this.launchRaid(serverLevel, pos);
+            return;
+        }
+        this.raidCountdownTicks = countdownSeconds * 20;
+        ownerPlayer.displayClientMessage(
+                Component.literal("Raiders are approaching your flag at " + formatPos(pos)
+                                + "! You have " + formatMinutesSeconds(countdownSeconds) + " to prepare.")
+                        .withStyle(ChatFormatting.RED),
+                false);
+        setChanged();
+    }
+
+    private void tickRaidCountdown(ServerLevel serverLevel, BlockPos pos) {
+        if (--this.raidCountdownTicks <= 0) {
+            this.raidCountdownTicks = 0;
+            this.launchRaid(serverLevel, pos);
+            return;
+        }
+        if (this.raidCountdownTicks == RAID_WARNING_TICKS) {
+            Player ownerPlayer = this.getOwner();
+            if (ownerPlayer != null) {
+                ownerPlayer.displayClientMessage(
+                        Component.literal("30 seconds until raiders reach your flag at " + formatPos(pos) + "!")
+                                .withStyle(ChatFormatting.RED),
+                        false);
+            }
+        }
+        if (this.raidCountdownTicks % RAID_SAVE_INTERVAL_TICKS == 0) {
+            setChanged();
+        }
+    }
+
+    /**
+     * Hands the countdown's end to {@link RaidSpawner}. The party materializes
+     * once its spawn searches finish, so the owner's "begun" message rides the
+     * same callback the manual raid triggers use.
+     */
+    private void launchRaid(ServerLevel serverLevel, BlockPos pos) {
+        RaidSpawner.startRaid(serverLevel, pos, () -> {
+            Player owner = this.getOwner();
+            if (owner != null) {
+                owner.displayClientMessage(
+                        Component.literal("The raid on your flag at " + formatPos(pos) + " has begun!")
+                                .withStyle(ChatFormatting.RED),
+                        false);
+            }
+        });
+        setChanged();
+    }
+
+    private static String formatPos(BlockPos pos) {
+        return "[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]";
+    }
+
+    /** "4 minutes and 32 seconds"; drops the minutes clause under a minute. */
+    private static String formatMinutesSeconds(int totalSeconds) {
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        if (minutes <= 0) {
+            return seconds + " seconds";
+        }
+        return minutes + " minutes and " + seconds + " seconds";
+    }
+
     public void addRepairTarget(BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {
         // Multiple events can fire for a single destruction (e.g. BreakEvent and BlockDropsEvent);
         // only record the first report for a given position.
@@ -339,6 +462,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         // Absent means off: saveAdditional only writes debug_boundary while it's true
         this.debugBoundary = tag.getBoolean("debug_boundary");
         syncDebugOverlayState();
+        if (tag.contains("raid_countdown_ticks")) {
+            this.raidCountdownTicks = tag.getInt("raid_countdown_ticks");
+        }
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");
             int count = tag.getInt("repair_targets_count");
@@ -362,6 +488,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         tag.putInt("base_level", this.baseLevel);
         if (this.debugBoundary) {
             tag.putBoolean("debug_boundary", true);
+        }
+        if (this.raidCountdownTicks > 0) {
+            tag.putInt("raid_countdown_ticks", this.raidCountdownTicks);
         }
         if (!repairTargets.isEmpty()) {
             CompoundTag repairTargetsTag = new CompoundTag();
