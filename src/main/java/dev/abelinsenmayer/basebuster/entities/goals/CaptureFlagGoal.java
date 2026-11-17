@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.entities.goals;
 
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.entities.IRaider;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -42,11 +43,13 @@ public class CaptureFlagGoal extends Goal {
     private static final double LOE_WAIVER_RADIUS = 1.5;
 
     private final PathfinderMob mob;
+    private final IRaider raider;
     @Nullable
     private BlockPos flagPos;
 
-    public CaptureFlagGoal(PathfinderMob mob) {
-        this.mob = mob;
+    public CaptureFlagGoal(IRaider raider) {
+        this.raider = raider;
+        this.mob = raider.mob();
         this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
     }
 
@@ -124,7 +127,7 @@ public class CaptureFlagGoal extends Goal {
 
         BlockEntity blockEntity = serverLevel.getBlockEntity(this.flagPos);
         if (blockEntity instanceof BaseFlagBlockEntity flagEntity) {
-            flagEntity.tickCapture(this.mob.getUUID());
+            flagEntity.tickCapture(this.mob.getUUID(), this.raider.getFaction());
         }
 
         if (this.mob.getRandom().nextInt(10) == 0) {

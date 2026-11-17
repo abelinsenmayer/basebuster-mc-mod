@@ -43,11 +43,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Spawns a raiding party (a {@link RaidTheme}'s bosses plus members) just
+ * Spawns a raiding party (a {@link Faction}'s bosses plus members) just
  * outside a flag's protection radius, biased toward the cheapest approach a
  * raider could take to the flag. Party size and makeup scale with the flag's
- * base level; see {@link #RAID_COMPOSITION}. The theme (zombie raiders or
- * vanilla illagers, via {@code raidSpawning.theme}) owns species creation;
+ * base level; see {@link #RAID_COMPOSITION}. The faction (undead raiders or
+ * vanilla illagers, via {@code raidSpawning.faction}) owns species creation;
  * everything below is interface-typed.
  *
  * <p>Because the spawn ring sits well beyond a single pathing search's reach,
@@ -100,7 +100,7 @@ public final class RaidSpawner {
             {5, 39, 45, 15}, // Level 5
     };
     // Member columns of RAID_COMPOSITION per row (all columns after the
-    // leading boss count); each theme maps them to its own member types
+    // leading boss count); each faction maps them to its own member types
     private static final int MEMBER_SLOTS = RAID_COMPOSITION[0].length - 1;
     // Minimum distance from the party anchor a member may appear; large
     // parties spread wider (see startRaid)
@@ -130,10 +130,10 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaid(ServerLevel level, BlockPos flagPos, Runnable onPartySpawned) {
-        RaidTheme theme = Config.RAID_THEME.get();
+        Faction faction = Config.RAID_FACTION.get();
         // Probe with the boss: it's the largest member, so routes and spawn
         // spots that fit the boss fit everyone
-        IRaiderBoss boss = newPartyProbe(level, flagPos, theme);
+        IRaiderBoss boss = newPartyProbe(level, flagPos, faction);
         if (boss == null) {
             return false;
         }
@@ -146,7 +146,7 @@ public final class RaidSpawner {
         int groupCount = Config.RAID_SINGLE_SPAWN_POINT.get()
                 ? 1
                 : RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, theme, boss, anchors, distance, groupCount, onPartySpawned);
+        return scheduleParty(level, flagPos, faction, boss, anchors, distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -159,8 +159,8 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos, Runnable onPartySpawned) {
-        RaidTheme theme = Config.RAID_THEME.get();
-        IRaiderBoss boss = newPartyProbe(level, flagPos, theme);
+        Faction faction = Config.RAID_FACTION.get();
+        IRaiderBoss boss = newPartyProbe(level, flagPos, faction);
         if (boss == null) {
             return false;
         }
@@ -170,7 +170,7 @@ public final class RaidSpawner {
         }
         int distance = Math.max(flagPos.distManhattan(anchor), 1);
         int groupCount = RAID_COMPOSITION[raidTier(level, flagPos) - 1][0];
-        return scheduleParty(level, flagPos, theme, boss, List.of(anchor), distance, groupCount, onPartySpawned);
+        return scheduleParty(level, flagPos, faction, boss, List.of(anchor), distance, groupCount, onPartySpawned);
     }
 
     /**
@@ -179,8 +179,8 @@ public final class RaidSpawner {
      * group's boss.
      */
     @Nullable
-    private static IRaiderBoss newPartyProbe(ServerLevel level, BlockPos flagPos, RaidTheme theme) {
-        IRaiderBoss probe = theme.createBoss(level);
+    private static IRaiderBoss newPartyProbe(ServerLevel level, BlockPos flagPos, Faction faction) {
+        IRaiderBoss probe = faction.createBoss(level);
         if (probe == null) {
             return null;
         }
@@ -209,8 +209,8 @@ public final class RaidSpawner {
      * Queues the searches a party needs and returns immediately; the party
      * itself spawns when they finish (see {@link PendingRaid}).
      */
-    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss probe, List<BlockPos> anchors, int distance, int groupCount, Runnable onPartySpawned) {
-        new PendingRaid(level, flagPos, theme, probe, distance, groupCount, raidTier(level, flagPos), onPartySpawned).start(anchors);
+    private static boolean scheduleParty(ServerLevel level, BlockPos flagPos, Faction faction, IRaiderBoss probe, List<BlockPos> anchors, int distance, int groupCount, Runnable onPartySpawned) {
+        new PendingRaid(level, flagPos, faction, probe, distance, groupCount, raidTier(level, flagPos), onPartySpawned).start(anchors);
         return true;
     }
 
@@ -225,7 +225,7 @@ public final class RaidSpawner {
     private static final class PendingRaid {
         private final ServerLevel level;
         private final BlockPos flagPos;
-        private final RaidTheme theme;
+        private final Faction faction;
         private final IRaiderBoss probe;
         private final int distance;
         private final int groupCount;
@@ -235,10 +235,10 @@ public final class RaidSpawner {
         private List<Path> paths = List.of();
         private int pendingSearches;
 
-        private PendingRaid(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss probe, int distance, int groupCount, int raidTier, Runnable onPartySpawned) {
+        private PendingRaid(ServerLevel level, BlockPos flagPos, Faction faction, IRaiderBoss probe, int distance, int groupCount, int raidTier, Runnable onPartySpawned) {
             this.level = level;
             this.flagPos = flagPos;
-            this.theme = theme;
+            this.faction = faction;
             this.probe = probe;
             this.distance = distance;
             this.groupCount = groupCount;
@@ -310,7 +310,7 @@ public final class RaidSpawner {
         }
 
         private void finish() {
-            spawnParty(this.level, this.flagPos, this.theme, this.probe, this.spots, this.paths, this.raidTier);
+            spawnParty(this.level, this.flagPos, this.faction, this.probe, this.spots, this.paths, this.raidTier);
             this.onPartySpawned.run();
         }
     }
@@ -319,7 +319,7 @@ public final class RaidSpawner {
      * Spawns the party itself once its searches have resolved: bosses take
      * their spots and routes, members scatter around the spots, and horns.
      */
-    private static void spawnParty(ServerLevel level, BlockPos flagPos, RaidTheme theme, IRaiderBoss boss, List<BlockPos> spots, List<Path> groupPaths, int raidTier) {
+    private static void spawnParty(ServerLevel level, BlockPos flagPos, Faction faction, IRaiderBoss boss, List<BlockPos> spots, List<Path> groupPaths, int raidTier) {
         RandomSource random = level.getRandom();
         int[] composition = RAID_COMPOSITION[raidTier - 1];
         int partySize = Arrays.stream(composition).sum();
@@ -340,7 +340,7 @@ public final class RaidSpawner {
         bosses.add(boss);
         // Each remaining boss leads its own group from its own spot
         for (int i = 1; i < composition[0]; i++) {
-            IRaiderBoss extra = theme.createBoss(level);
+            IRaiderBoss extra = faction.createBoss(level);
             if (extra == null) {
                 continue;
             }
@@ -355,7 +355,7 @@ public final class RaidSpawner {
         int memberIndex = 0;
         for (int slot = 0; slot < MEMBER_SLOTS; slot++) {
             for (int i = 0; i < composition[slot + 1]; i++) {
-                IRaider raider = theme.createMember(level, slot);
+                IRaider raider = faction.createMember(level, slot);
                 if (raider == null) {
                     continue;
                 }

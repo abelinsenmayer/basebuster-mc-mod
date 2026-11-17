@@ -1,6 +1,6 @@
 package dev.abelinsenmayer.basebuster;
 
-import dev.abelinsenmayer.basebuster.raids.RaidTheme;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 // An example config class. This is not required, but it's a good idea to have one to keep your config organized.
@@ -48,9 +48,9 @@ public class Config {
             .comment("Whether every raid group spawns together at the single most reachable point instead of spreading around the flag")
             .define("raidSpawning.singleSpawnPoint", true);
 
-    public static final ModConfigSpec.EnumValue<RaidTheme> RAID_THEME = BUILDER
-            .comment("The species raid parties are made of: ZOMBIE uses the mod's kit-equipped zombie raiders and bosses, ILLAGER uses vanilla illagers (pillagers, vindicators, evokers) led by ravager bosses")
-            .defineEnum("raidSpawning.theme", RaidTheme.ILLAGER);
+    public static final ModConfigSpec.EnumValue<Faction> RAID_FACTION = BUILDER
+            .comment("The faction raid parties are made of: UNDEAD uses the mod's kit-equipped zombie raiders and bosses, ILLAGER uses vanilla illagers (pillagers, vindicators, evokers) led by ravager bosses")
+            .defineEnum("raidSpawning.faction", Faction.ILLAGER);
 
     public static final ModConfigSpec.IntValue RAID_SEARCH_MAX_AIR_HEIGHT = BUILDER
             .comment("Blocks above solid support that coarse long-range path searches (raid spawn anchors, squad routes) may plan scaffold moves; bounds the aerial search space for high flags")

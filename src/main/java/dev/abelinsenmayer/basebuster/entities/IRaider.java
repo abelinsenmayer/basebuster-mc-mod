@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.entities;
 
 import dev.abelinsenmayer.basebuster.Config;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -28,6 +29,13 @@ import java.util.Comparator;
 public interface IRaider {
     /** The entity carrying this raider behavior. */
     PathfinderMob mob();
+
+    /**
+     * The faction this raider fights for. It decides whose standard a
+     * captured flag flies and whose crossed-out standard a defeated raid's
+     * victory banner shows.
+     */
+    Faction getFaction();
 
     /** Whether this raider type participates in squads; leaders never do. */
     boolean canJoinSquad();

@@ -3,10 +3,12 @@ package dev.abelinsenmayer.basebuster.entities;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.pathfinding.ResumablePathSearch;
 import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -183,7 +185,13 @@ public final class RaiderBossComponent<B extends PathfinderMob & IRaider> {
     public void dropVictoryBanner(ServerLevel level) {
         if (this.isLastBossOfRaid(level)) {
             int index = Math.clamp(this.boss.getRaidTier(), VictoryBannerBlock.MIN_TIER, VictoryBannerBlock.MAX_TIER) - 1;
-            this.boss.spawnAtLocation(new ItemStack(BaseBuster.VICTORY_BANNER_ITEMS.get(index).get()));
+            ItemStack banner = new ItemStack(BaseBuster.VICTORY_BANNER_ITEMS.get(index).get());
+            // The defeated faction's standard, crossed out in red -- the
+            // banner's base color still marks the raid's tier
+            Faction faction = this.boss.getFaction();
+            banner.set(DataComponents.BANNER_PATTERNS,
+                    faction.victoryBannerPatterns(level.registryAccess()));
+            this.boss.spawnAtLocation(banner);
         }
     }
 

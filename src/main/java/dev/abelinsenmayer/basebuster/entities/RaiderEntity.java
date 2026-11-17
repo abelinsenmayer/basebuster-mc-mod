@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.entities;
 
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.entities.goals.RaiderGoals;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderMoveControl;
 import dev.abelinsenmayer.basebuster.pathfinding.RaiderNavigation;
 import net.minecraft.nbt.CompoundTag;
@@ -308,6 +309,11 @@ public class RaiderEntity extends Zombie implements RangedAttackMob, IRaider {
     @Override
     public PathfinderMob mob() {
         return this;
+    }
+
+    @Override
+    public Faction getFaction() {
+        return Faction.UNDEAD;
     }
 
     // Whether this raider type participates in squads; bosses lead, never join

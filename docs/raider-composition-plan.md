@@ -135,7 +135,7 @@ public class RaiderVindicatorEntity extends Vindicator implements IRaider {
    `RaiderEvokerEntity`, `RaiderRavagerEntity` (+ a boss variant, likely Ravager
    or Evoker). Registration, `createAttributes()`, spawn eggs, vanilla
    renderers, loot tables, lang keys.
-6. **Generalize `RaidSpawner`** — `RaidTheme`/composition table mapping slots to
+6. **Generalize `RaidSpawner`** — `Faction`/composition table mapping slots to
    entity factories per archetype; `spawnMember(Mob)`; interface-typed boss
    wiring.
 7. **Debug/renderer touch-ups** — `SquadPathDebugRenderer` →

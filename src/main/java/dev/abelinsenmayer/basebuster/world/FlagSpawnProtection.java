@@ -15,8 +15,8 @@ import java.util.Comparator;
 
 /**
  * Respawn control for faction-owned flags: a flag held by a non-player faction
- * (e.g. {@link BaseFlagBlockEntity#RAIDER_FACTION}) bars players from keeping or
- * setting a respawn point inside its protection radius.
+ * (see {@link dev.abelinsenmayer.basebuster.raids.Faction}) bars players from
+ * keeping or setting a respawn point inside its protection radius.
  */
 public final class FlagSpawnProtection {
     private FlagSpawnProtection() {

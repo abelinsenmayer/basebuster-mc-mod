@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -23,7 +24,6 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.raid.Raid;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
@@ -47,8 +47,6 @@ import java.util.UUID;
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
 
 public class BaseFlagBlockEntity extends BannerBlockEntity {
-    // Faction name assigned to flags captured by raiders
-    public static final String RAIDER_FACTION = "RAIDERS";
     // Segments rendered as '=' in the owner's capture progress bar
     private static final int PROGRESS_BAR_SEGMENTS = 10;
     // Ticks between capture progress notifications to the owner
@@ -68,10 +66,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // stored banner design even while the owner is offline
     @Nullable
     private UUID ownerUuid = null;
-    // Faction ownership replaces player ownership (e.g. RAIDER_FACTION).
-    // While set, getOwner() returns null so grief protection no longer applies.
+    // Faction ownership replaces player ownership. While set, getOwner()
+    // returns null so grief protection no longer applies.
     @Nullable
-    private String ownerFaction = null;
+    private Faction ownerFaction = null;
     private List<RepairTarget> repairTargets = new ArrayList<>();
 
     // Cumulative victory-banner counts needed to hold each level:
@@ -91,7 +89,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     // Base color applied by the owner right-clicking with a banner; BLACK is
     // the flag's own default. Patterns live in the inherited BANNER_PATTERNS
-    // component. A captured flag renders RED regardless (see getBaseColor).
+    // component. A captured flag renders in its owning faction's color
+    // instead (see getBaseColor).
     private DyeColor flagColor = DyeColor.BLACK;
 
     // Progress toward a raider capture, in [0, 1)
@@ -100,6 +99,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     private long lastCaptureTick = -1L;
     // Capturer id -> game time of its most recent capture tick
     private final Map<UUID, Long> capturerTicks = new HashMap<>();
+    // The faction accumulating the current captureProgress; a different
+    // faction's capturers restart the channel
+    @Nullable
+    private Faction capturerFaction = null;
 
     // Whether the debug overlay renders the protection-radius sphere for this flag.
     // Persisted and synced to clients; toggled by right-clicking with a stick.
@@ -130,11 +133,14 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     @Override
     public DyeColor getBaseColor() {
-        // The owner's applied color (black until then), red once raiders capture it
+        // The owner's applied color (black until then); a captured flag flies
+        // its owning faction's color instead
         BlockState state = getBlockState();
-        return state.hasProperty(BaseFlagBlock.CAPTURED) && state.getValue(BaseFlagBlock.CAPTURED)
-                ? DyeColor.RED
-                : this.flagColor;
+        if (state.hasProperty(BaseFlagBlock.CAPTURED) && state.getValue(BaseFlagBlock.CAPTURED)) {
+            // Flags captured before factions existed still read red
+            return this.ownerFaction != null ? this.ownerFaction.baseFlagColor() : DyeColor.RED;
+        }
+        return this.flagColor;
     }
 
     /**
@@ -184,34 +190,32 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     /**
-     * The vanilla ominous banner's pattern layers -- the raider faction's flag
-     * design. Pulled from the same stack raid captains wear, so the two always
-     * match. The {@link BaseFlagBlock#CAPTURED} state keeps the base color red.
+     * The owning faction's standard -- the pattern layers it hoists on
+     * captured flags. Empty while the flag isn't faction-owned or the level
+     * isn't known yet.
      */
-    private BannerPatternLayers ominousPatternLayers() {
-        if (this.level == null) {
+    private BannerPatternLayers factionPatternLayers() {
+        if (this.level == null || this.ownerFaction == null) {
             return BannerPatternLayers.EMPTY;
         }
-        return Raid.getLeaderBannerInstance(
-                        this.level.registryAccess().lookupOrThrow(Registries.BANNER_PATTERN))
-                .getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY);
+        return this.ownerFaction.baseFlagPatterns(this.level.registryAccess());
     }
 
     /**
      * The display name of whoever controls this flag's territory -- the owning
-     * player's name, or the faction name (e.g. {@link #RAIDER_FACTION}) for a
-     * captured flag. Null while the flag is unowned.
+     * player's name, or the owning faction's name for a captured flag. Null
+     * while the flag is unowned.
      */
     @Nullable
     public String getTerritoryOwnerName() {
         if (ownerFaction != null) {
-            return ownerFaction;
+            return ownerFaction.displayName();
         }
         return "NONE".equals(ownerName) ? null : ownerName;
     }
 
     public Component getInfoForDisplay() {
-        String ownerDisplay = ownerFaction != null ? ownerFaction + " (faction)" : ownerName;
+        String ownerDisplay = ownerFaction != null ? ownerFaction.displayName() + " (faction)" : ownerName;
         Component name = getCustomName();
         return Component.literal(
                 (name != null ? "Name: " + name.getString() + "\n" : "")
@@ -255,18 +259,18 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (!(this.level instanceof ServerLevel serverLevel)) {
             return;
         }
-        if (this.isRaiderOwned()) {
-            // Raider-owned flags fly the ominous standard; ones captured before
-            // it existed pick it up as they load
-            BannerPatternLayers ominous = this.ominousPatternLayers();
+        if (this.ownerFaction != null) {
+            // Faction-owned flags fly their faction's standard; ones captured
+            // before it existed pick it up as they load
+            BannerPatternLayers standard = this.factionPatternLayers();
             BannerPatternLayers current = this.components()
                     .getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY);
-            if (!ominous.equals(current)) {
-                this.applyDesign(this.flagColor, ominous);
+            if (!standard.equals(current)) {
+                this.applyDesign(this.flagColor, standard);
             }
             return;
         }
-        if (this.ownerFaction != null || this.ownerUuid == null) {
+        if (this.ownerUuid == null) {
             return;
         }
         FlagsSavedData.FlagDesign design =
@@ -627,9 +631,12 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             this.ownerUuid = tag.getUUID("owner_uuid");
         }
         if (tag.contains("owner_faction")) {
-            this.ownerFaction = tag.getString("owner_faction");
-            this.owner = null;
-            this.ownerUuid = null;
+            this.ownerFaction = Faction.byName(tag.getString("owner_faction"));
+            if (this.ownerFaction != null) {
+                this.owner = null;
+                this.ownerUuid = null;
+            }
+            // Unknown faction names (e.g. from an older save) load as unowned
         }
         if (tag.contains("base_level")) {
             this.baseLevel = tag.getInt("base_level");
@@ -658,7 +665,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         super.saveAdditional(tag, registries);
         if (ownerFaction != null) {
             tag.putString("owner_name", this.ownerName);
-            tag.putString("owner_faction", this.ownerFaction);
+            tag.putString("owner_faction", this.ownerFaction.name());
         } else if (owner != null) {
             tag.putString("owner_name", owner.getDisplayName().getString());
         }
@@ -706,6 +713,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         this.ownerFaction = null;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
+        this.capturerFaction = null;
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
         this.lastPlayerCaptureTick = -1L;
@@ -725,19 +733,15 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             if (design != null) {
                 this.applyDesign(design.color(), design.patterns());
             } else {
-                // Reclaiming a raider-captured flag lowers the ominous standard
+                // Reclaiming a captured flag lowers the faction's standard
                 this.applyDesign(this.flagColor, BannerPatternLayers.EMPTY);
             }
         }
         setChanged();
     }
 
-    public boolean isRaiderOwned() {
-        return RAIDER_FACTION.equals(this.ownerFaction);
-    }
-
     /**
-     * Whether a non-player faction (e.g. {@link #RAIDER_FACTION}) owns this flag.
+     * Whether a non-player {@link Faction} owns this flag.
      * Faction-controlled areas block player respawn points.
      */
     public boolean isFactionOwned() {
@@ -755,8 +759,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * at {@link Config#FLAG_CAPTURE_MAX_SPEED}, so a lone raider needs
      * {@link Config#FLAG_CAPTURE_SECONDS} seconds to finish.
      */
-    public void tickCapture(UUID capturerId) {
-        if (!(this.level instanceof ServerLevel serverLevel) || isRaiderOwned()) {
+    public void tickCapture(UUID capturerId, Faction faction) {
+        if (!(this.level instanceof ServerLevel serverLevel) || isFactionOwned()) {
             return;
         }
 
@@ -764,7 +768,14 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (this.lastCaptureTick >= 0 && now - this.lastCaptureTick > 1) {
             this.captureProgress = 0.0F;
             this.capturerTicks.clear();
+            this.capturerFaction = null;
         }
+        if (this.capturerFaction != null && this.capturerFaction != faction) {
+            // A different faction taking over the channel restarts it
+            this.captureProgress = 0.0F;
+            this.capturerTicks.clear();
+        }
+        this.capturerFaction = faction;
         this.lastCaptureTick = now;
         this.capturerTicks.put(capturerId, now);
         this.capturerTicks.values().removeIf(tick -> tick < now - 1);
@@ -776,7 +787,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         this.captureProgress += (float) (speed / (participants * this.requiredCaptureTicks()));
 
         if (this.captureProgress >= 1.0F) {
-            this.captureByRaiders(serverLevel);
+            this.captureByFaction(faction, serverLevel);
             return;
         }
 
@@ -883,18 +894,19 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 true);
     }
 
-    private void captureByRaiders(ServerLevel serverLevel) {
+    private void captureByFaction(Faction faction, ServerLevel serverLevel) {
         Player formerOwner = this.getOwner();
         // A captured flag can no longer repair its surroundings; drop them like
         // a flag broken by a player, but with no player to credit
         this.abandonRepairs(null);
 
         this.owner = null;
-        this.ownerName = RAIDER_FACTION;
+        this.ownerName = faction.displayName();
         this.ownerUuid = null;
-        this.ownerFaction = RAIDER_FACTION;
+        this.ownerFaction = faction;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
+        this.capturerFaction = null;
         this.playerCaptureProgress = 0.0F;
         this.playerCapturerId = null;
         this.lastPlayerCaptureTick = -1L;
@@ -903,8 +915,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
         FlagsSavedData.getFromLevel(serverLevel).addCapturedFlagLocation(pos);
 
-        // Raiders hoist their own standard: the ominous banner's pattern layers
-        this.applyDesign(this.flagColor, this.ominousPatternLayers());
+        // The capturing faction hoists its own standard over the flag
+        this.applyDesign(this.flagColor, faction.baseFlagPatterns(serverLevel.registryAccess()));
 
         // The area is now faction-controlled: no one may keep a respawn point in it
         FlagSpawnProtection.clearSpawnsInArea(serverLevel, pos);
