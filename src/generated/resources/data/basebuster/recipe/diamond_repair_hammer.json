@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "#": {
+      "item": "minecraft:stick"
+    },
+    "H": {
+      "item": "minecraft:diamond"
+    }
+  },
+  "pattern": [
+    "HH",
+    " #"
+  ],
+  "result": {
+    "count": 1,
+    "id": "basebuster:diamond_repair_hammer"
+  }
+}

@@ -17,9 +17,9 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
         // The flag is a banner block: its item renders through
         // BlockEntityWithoutLevelRenderer like the victory banners
         bannerItem(BaseBuster.BASE_FLAG_BLOCK_ITEM);
-        handheldWithTexture(BaseBuster.STONE_REPAIR_HAMMER, "item/stone_shovel");
-        handheldWithTexture(BaseBuster.IRON_REPAIR_HAMMER, "item/iron_shovel");
-        handheldWithTexture(BaseBuster.DIAMOND_REPAIR_HAMMER, "item/diamond_shovel");
+        handheldItem(BaseBuster.STONE_REPAIR_HAMMER);
+        handheldItem(BaseBuster.IRON_REPAIR_HAMMER);
+        handheldItem(BaseBuster.DIAMOND_REPAIR_HAMMER);
         withExistingParent(BaseBuster.RAIDER_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
         withExistingParent(BaseBuster.RAIDER_BOSS_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
         withExistingParent(BaseBuster.RAIDER_VINDICATOR_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
@@ -44,8 +44,8 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
                 .parent(new ModelFile.UncheckedModelFile(mcLoc("item/template_banner")));
     }
 
-    private void handheldWithTexture(DeferredItem<?> item, String vanillaTexture) {
+    private void handheldItem(DeferredItem<?> item) {
         withExistingParent(item.getId().toString(), mcLoc("item/handheld"))
-                .texture("layer0", mcLoc(vanillaTexture));
+                .texture("layer0", modLoc("item/" + item.getId().getPath()));
     }
 }

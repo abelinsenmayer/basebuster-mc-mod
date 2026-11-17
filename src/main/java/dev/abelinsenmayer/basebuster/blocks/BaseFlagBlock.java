@@ -288,6 +288,13 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
         }
 
         if (!level.isClientSide) {
+            if (RaidSpawner.isRaidInProgress((ServerLevel) level, pos)) {
+                player.displayClientMessage(
+                        Component.literal("This flag cannot be repaired while a raid is attacking it.")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+                return ItemInteractionResult.SUCCESS;
+            }
             if (blockEntity.getRepairTargetCount() == 0) {
                 player.displayClientMessage(Component.literal("No blocks left to repair"), true);
                 return ItemInteractionResult.SUCCESS;
