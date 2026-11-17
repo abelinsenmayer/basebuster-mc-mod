@@ -23,6 +23,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.raid.Raid;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
@@ -183,6 +184,20 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     /**
+     * The vanilla ominous banner's pattern layers -- the raider faction's flag
+     * design. Pulled from the same stack raid captains wear, so the two always
+     * match. The {@link BaseFlagBlock#CAPTURED} state keeps the base color red.
+     */
+    private BannerPatternLayers ominousPatternLayers() {
+        if (this.level == null) {
+            return BannerPatternLayers.EMPTY;
+        }
+        return Raid.getLeaderBannerInstance(
+                        this.level.registryAccess().lookupOrThrow(Registries.BANNER_PATTERN))
+                .getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY);
+    }
+
+    /**
      * The display name of whoever controls this flag's territory -- the owning
      * player's name, or the faction name (e.g. {@link #RAIDER_FACTION}) for a
      * captured flag. Null while the flag is unowned.
@@ -237,9 +252,21 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * payload to clients, so no sendBlockUpdated is needed.
      */
     private void syncOwnerDesign() {
-        if (!(this.level instanceof ServerLevel serverLevel)
-                || this.ownerFaction != null
-                || this.ownerUuid == null) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        if (this.isRaiderOwned()) {
+            // Raider-owned flags fly the ominous standard; ones captured before
+            // it existed pick it up as they load
+            BannerPatternLayers ominous = this.ominousPatternLayers();
+            BannerPatternLayers current = this.components()
+                    .getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY);
+            if (!ominous.equals(current)) {
+                this.applyDesign(this.flagColor, ominous);
+            }
+            return;
+        }
+        if (this.ownerFaction != null || this.ownerUuid == null) {
             return;
         }
         FlagsSavedData.FlagDesign design =
@@ -697,6 +724,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                     FlagsSavedData.getOverworld(serverLevel).getPlayerDesign(player.getUUID());
             if (design != null) {
                 this.applyDesign(design.color(), design.patterns());
+            } else {
+                // Reclaiming a raider-captured flag lowers the ominous standard
+                this.applyDesign(this.flagColor, BannerPatternLayers.EMPTY);
             }
         }
         setChanged();
@@ -872,6 +902,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         BlockPos pos = getBlockPos();
         serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
         FlagsSavedData.getFromLevel(serverLevel).addCapturedFlagLocation(pos);
+
+        // Raiders hoist their own standard: the ominous banner's pattern layers
+        this.applyDesign(this.flagColor, this.ominousPatternLayers());
 
         // The area is now faction-controlled: no one may keep a respawn point in it
         FlagSpawnProtection.clearSpawnsInArea(serverLevel, pos);
