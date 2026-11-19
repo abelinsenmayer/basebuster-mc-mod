@@ -12,6 +12,8 @@ public final class FactionNetworking {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(CreateFactionPayload.TYPE, CreateFactionPayload.STREAM_CODEC,
                 CreateFactionPayload::handle);
+        registrar.playToServer(EditFactionPayload.TYPE, EditFactionPayload.STREAM_CODEC,
+                EditFactionPayload::handle);
         registrar.playToClient(CreateFactionResultPayload.TYPE, CreateFactionResultPayload.STREAM_CODEC,
                 CreateFactionResultPayload::handle);
     }

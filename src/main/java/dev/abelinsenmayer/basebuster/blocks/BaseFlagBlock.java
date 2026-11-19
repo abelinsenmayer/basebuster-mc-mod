@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.client.FactionPledgeScreen;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -38,7 +39,9 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Team;
+import net.minecraft.client.Minecraft;
 
 import javax.annotation.Nullable;
 
@@ -161,13 +164,19 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
             if (player.isShiftKeyDown()) {
                 return InteractionResult.PASS;
             }
-            // Show flag info to player via chat
             BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
             if (blockEntity == null) {
                 return InteractionResult.CONSUME;
             }
-            Component infoMessage = blockEntity.getInfoForDisplay();
-            player.displayClientMessage(infoMessage, false);
+            // Members of the owning team get the faction settings GUI;
+            // everyone else sees the flag's info in chat. The screen classes
+            // resolve lazily on the physical client only, as in
+            // FactionPledgeItem, so this stays safe on dedicated servers
+            if (blockEntity.isOwnedBy(player)) {
+                openFactionEditor(pos, blockEntity);
+            } else {
+                player.displayClientMessage(blockEntity.getInfoForDisplay(), false);
+            }
             return InteractionResult.SUCCESS;
         }
 
@@ -183,6 +192,25 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
         }
 
         return InteractionResult.SUCCESS;
+    }
+
+    /**
+     * Opens the faction settings screen prefilled with the owning team's
+     * current configuration. Only called client-side, after
+     * {@link BaseFlagBlockEntity#isOwnedBy} confirmed the clicker is a
+     * member, so {@link BaseFlagBlockEntity#getOwnerTeam} cannot be null.
+     */
+    private void openFactionEditor(BlockPos pos, BaseFlagBlockEntity blockEntity) {
+        PlayerTeam team = blockEntity.getOwnerTeam();
+        Minecraft.getInstance().setScreen(new FactionPledgeScreen(pos,
+                new FactionPledgeScreen.Prefill(
+                        team.getName(),
+                        team.getColor(),
+                        team.isAllowFriendlyFire(),
+                        team.getNameTagVisibility() != Team.Visibility.ALWAYS,
+                        !team.getPlayerPrefix().getString().isEmpty(),
+                        // No team backing exists yet for uninvited joins
+                        false)));
     }
 
     @Override

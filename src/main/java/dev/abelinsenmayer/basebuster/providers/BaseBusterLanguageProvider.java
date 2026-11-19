@@ -53,6 +53,11 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.faction_pledge.show_prefix", "Show faction name prefix?");
         this.add("gui.basebuster.faction_pledge.allow_uninvited", "Allow uninvited members to join at your flag?");
         this.add("gui.basebuster.faction_pledge.create", "Create Faction");
+        this.add("gui.basebuster.faction_pledge.edit_title", "Faction Settings");
+        this.add("gui.basebuster.faction_pledge.save", "Save");
+        this.add("gui.basebuster.faction_pledge.updated", "Faction '%s' updated.");
+        this.add("gui.basebuster.faction_pledge.updated_broadcast", "%s changed your faction's configuration.");
+        this.add("gui.basebuster.faction_pledge.not_member", "Only the flag's owning team can edit its faction.");
         this.add("gui.basebuster.faction_pledge.name_taken", "That faction name is already taken.");
         this.add("gui.basebuster.faction_pledge.name_invalid", "Invalid faction name.");
         this.add("gui.basebuster.faction_pledge.created", "Faction '%s' created!");
