@@ -29,6 +29,8 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
         withExistingParent(BaseBuster.RAIDER_RAVAGER_BOSS_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
         // Test tool disguised as rotten flesh
         withExistingParent(BaseBuster.RAID_SPAWNER.getId().toString(), mcLoc("item/rotten_flesh"));
+        // Looks like regular paper for now
+        withExistingParent(BaseBuster.FACTION_PLEDGE.getId().toString(), mcLoc("item/paper"));
         // Banner items render through BlockEntityWithoutLevelRenderer; vanilla's
         // template_banner wraps builtin/entity with the display transforms that
         // keep the model inside inventory slots and hands

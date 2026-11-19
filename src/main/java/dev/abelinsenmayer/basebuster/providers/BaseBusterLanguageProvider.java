@@ -44,6 +44,25 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.addEntityType(BaseBuster.RAIDER_RAVAGER_BOSS, "Ravager Raider Boss");
         this.addItem(BaseBuster.RAIDER_RAVAGER_BOSS_SPAWN_EGG, "Ravager Raider Boss Spawn Egg");
         this.addItem(BaseBuster.RAID_SPAWNER, "Raid Spawner");
+        this.addItem(BaseBuster.FACTION_PLEDGE, "Faction Pledge");
+        this.add("gui.basebuster.faction_pledge", "Faction Pledge");
+        this.add("gui.basebuster.faction_pledge.name_hint", "[Enter your faction name]");
+        this.add("gui.basebuster.faction_pledge.faction_color", "Faction color");
+        this.add("gui.basebuster.faction_pledge.friendly_fire", "Allow friendly fire?");
+        this.add("gui.basebuster.faction_pledge.hide_nametags", "Hide nametags from non-members?");
+        this.add("gui.basebuster.faction_pledge.show_prefix", "Show faction name prefix?");
+        this.add("gui.basebuster.faction_pledge.allow_uninvited", "Allow uninvited members to join at your flag?");
+        this.add("gui.basebuster.faction_pledge.create", "Create Faction");
+        this.add("gui.basebuster.faction_pledge.name_taken", "That faction name is already taken.");
+        this.add("gui.basebuster.faction_pledge.name_invalid", "Invalid faction name.");
+        this.add("gui.basebuster.faction_pledge.created", "Faction '%s' created!");
+        this.add("item.basebuster.faction_pledge.unbound_hint_bind", "Right-click: bind to your current faction");
+        this.add("item.basebuster.faction_pledge.unbound_hint_create", "Sneak + right-click: create a new faction");
+        this.add("item.basebuster.faction_pledge.bound_to", "Bound to faction: %s");
+        this.add("item.basebuster.faction_pledge.bound_hint_adopt", "Right-click: join this faction");
+        this.add("item.basebuster.faction_pledge.bound_hint_create", "Sneak + right-click: create a new faction");
+        this.add("item.basebuster.faction_pledge.no_such_faction", "The faction '%s' no longer exists.");
+        this.add("item.basebuster.faction_pledge.joined", "You joined faction '%s'!");
         // Banner items delegate their description id to the standing block
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER1, "Victory Banner (Tier 1)");
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER2, "Victory Banner (Tier 2)");

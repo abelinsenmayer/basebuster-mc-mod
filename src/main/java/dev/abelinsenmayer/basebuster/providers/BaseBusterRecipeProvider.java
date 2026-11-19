@@ -9,6 +9,7 @@ import net.minecraft.data.recipes.RecipeCategory;
 import net.minecraft.data.recipes.RecipeOutput;
 import net.minecraft.data.recipes.RecipeProvider;
 import net.minecraft.data.recipes.ShapedRecipeBuilder;
+import net.minecraft.data.recipes.ShapelessRecipeBuilder;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -33,6 +34,15 @@ public class BaseBusterRecipeProvider extends RecipeProvider {
                 .define('#', Items.STICK)
                 .define('W', ItemTags.WOOL)
                 .unlockedBy("has_wool", has(ItemTags.WOOL))
+                .save(recipeOutput);
+
+        // A written pledge: paper with ink and a feather quill, tinted red
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, BaseBuster.FACTION_PLEDGE.get())
+                .requires(Items.PAPER)
+                .requires(Items.INK_SAC)
+                .requires(Items.FEATHER)
+                .requires(Items.RED_DYE)
+                .unlockedBy("has_paper", has(Items.PAPER))
                 .save(recipeOutput);
 
         repairHammer(recipeOutput, BaseBuster.STONE_REPAIR_HAMMER.get(),

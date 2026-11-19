@@ -14,8 +14,10 @@ import dev.abelinsenmayer.basebuster.entities.RaiderRavagerBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderRavagerEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderVindicatorEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
+import dev.abelinsenmayer.basebuster.items.FactionPledgeItem;
 import dev.abelinsenmayer.basebuster.items.RaidSpawnerItem;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
+import dev.abelinsenmayer.basebuster.network.FactionNetworking;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterBlockStateProvider;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterItemModelProvider;
 import dev.abelinsenmayer.basebuster.providers.BaseBusterLanguageProvider;
@@ -28,7 +30,9 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.Codec;
 
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
@@ -86,6 +90,7 @@ public class BaseBuster {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, BaseBuster.MODID);
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister.create(Registries.ENTITY_TYPE, BaseBuster.MODID);
+    public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES = DeferredRegister.createDataComponents(Registries.DATA_COMPONENT_TYPE, MODID);
 
     public static final DeferredBlock<BaseFlagBlock> BASE_FLAG_BLOCK = BLOCKS.register("base_flag_block", () -> new BaseFlagBlock(BlockBehaviour.Properties.of()));
     public static final DeferredItem<BlockItem> BASE_FLAG_BLOCK_ITEM = ITEMS.registerSimpleBlockItem("base_flag_block", BASE_FLAG_BLOCK);
@@ -104,6 +109,17 @@ public class BaseBuster {
     // Test tool disguised as rotten flesh: right-clicking a block raids the
     // nearest player-owned flag, spawning the party at the clicked spot
     public static final DeferredItem<RaidSpawnerItem> RAID_SPAWNER = ITEMS.register("raid_spawner", () -> new RaidSpawnerItem(new Item.Properties()));
+
+    // A paper certificate: sneak-right-click opens the faction pledge GUI;
+    // once bound to a faction, right-clicking joins that faction
+    public static final DeferredItem<FactionPledgeItem> FACTION_PLEDGE = ITEMS.register("faction_pledge", () -> new FactionPledgeItem(new Item.Properties()));
+
+    // Stored on a bound faction pledge: the name of the scoreboard team the
+    // pledge joins when right-clicked. Absent = unbound pledge
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> FACTION =
+            DATA_COMPONENT_TYPES.register("faction", () -> DataComponentType.<String>builder()
+                    .persistent(Codec.STRING)
+                    .build());
 
     // Victory banners: each tier is a standing block plus its wall-mounted
     // counterpart, sharing a single BannerItem that places whichever applies
@@ -231,6 +247,7 @@ public class BaseBuster {
                 output.accept(RAIDER_RAVAGER_SPAWN_EGG.get());
                 output.accept(RAIDER_RAVAGER_BOSS_SPAWN_EGG.get());
                 output.accept(RAID_SPAWNER.get());
+                output.accept(FACTION_PLEDGE.get());
                 output.accept(VICTORY_BANNER_TIER1_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER2_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER3_ITEM.get());
@@ -264,6 +281,7 @@ public class BaseBuster {
         BLOCK_ENTITY_TYPES.register(modEventBus);
         // Register the Deferred Register to the mod event bus so entity types get registered
         ENTITY_TYPES.register(modEventBus);
+        DATA_COMPONENT_TYPES.register(modEventBus);
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (BaseBuster) to respond directly to events.
@@ -271,6 +289,7 @@ public class BaseBuster {
         NeoForge.EVENT_BUS.register(this);
 
         modEventBus.addListener(this::onGatherData);
+        modEventBus.addListener(FactionNetworking::onRegisterPayloads);
         modEventBus.addListener(this::onRegisterEntityAttributes);
         modEventBus.addListener(this::onAddBannerBlocks);
         modEventBus.addListener(this::onModConfigReloaded);
