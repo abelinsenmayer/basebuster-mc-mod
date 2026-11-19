@@ -1,5 +1,6 @@
 package dev.abelinsenmayer.basebuster.events;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
@@ -20,6 +21,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.block.Blocks;
@@ -27,9 +29,12 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
+import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -40,6 +45,7 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -60,6 +66,11 @@ public class BaseBusterEventBus {
     // Player id -> flag position whose territory currently contains them.
     // In-memory only; a stale entry just delays a re-entry message.
     private final Map<UUID, BlockPos> playerTerritories = new HashMap<>();
+
+    // Item entity id -> scoreboard name of the player who threw a pledge
+    // bound to their own faction. Renouncing a faction means burning one of
+    // these, so the burn check only needs to consult this map.
+    private final Map<UUID, String> pledgeThrowers = new HashMap<>();
 
     /** Advances all in-progress long-range path searches by their per-tick slice. */
     @SubscribeEvent
@@ -356,6 +367,66 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         this.playerTerritories.remove(event.getEntity().getUUID());
+    }
+
+    /**
+     * Remembers who threw a faction pledge bound to their own team. Only
+     * those pledges can renounce a faction when burned -- a pledge bound to
+     * another faction, or an unbound one, is just trash in the fire.
+     */
+    @SubscribeEvent
+    public void onPledgeToss(ItemTossEvent event) {
+        ItemEntity item = event.getEntity();
+        if (!(item.level() instanceof ServerLevel)) {
+            return;
+        }
+        String boundFaction = item.getItem().get(BaseBuster.FACTION.get());
+        PlayerTeam team = event.getPlayer().getTeam();
+        if (boundFaction != null && team != null && boundFaction.equals(team.getName())) {
+            this.pledgeThrowers.put(item.getUUID(), event.getPlayer().getScoreboardName());
+        }
+    }
+
+    /**
+     * The renunciation: when a tracked pledge burns in fire or lava, its
+     * thrower leaves the bound faction -- provided they're still on that
+     * team (switching factions between toss and burn cancels it). The
+     * pledge is discarded either way since it's about to be destroyed
+     * anyway; this just makes single-fire explicit.
+     */
+    @SubscribeEvent
+    public void onItemEntityTick(EntityTickEvent.Post event) {
+        if (!(event.getEntity() instanceof ItemEntity item)
+                || !(item.level() instanceof ServerLevel serverLevel)
+                || !pledgeThrowers.containsKey(item.getUUID())) {
+            return;
+        }
+        if (!item.isOnFire() && !item.isInLava()) {
+            return;
+        }
+        String playerName = pledgeThrowers.remove(item.getUUID());
+        item.discard();
+        String boundFaction = item.getItem().get(BaseBuster.FACTION.get());
+        if (boundFaction == null) {
+            return;
+        }
+        Scoreboard scoreboard = serverLevel.getScoreboard();
+        PlayerTeam team = scoreboard.getPlayersTeam(playerName);
+        if (team == null || !team.getName().equals(boundFaction)) {
+            return;
+        }
+        scoreboard.removePlayerFromTeam(playerName, team);
+        Player thrower = serverLevel.getServer().getPlayerList().getPlayerByName(playerName);
+        if (thrower != null) {
+            thrower.sendSystemMessage(Component.translatable(
+                    "item.basebuster.faction_pledge.left", team.getDisplayName()));
+        }
+    }
+
+    /** Drops a tracked pledge's toss record when its entity leaves the world. */
+    @SubscribeEvent
+    public void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
+        this.pledgeThrowers.remove(event.getEntity().getUUID());
     }
 
     /**

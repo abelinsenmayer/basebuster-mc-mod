@@ -104,8 +104,15 @@ public class FactionPledgeItem extends Item {
             tooltipComponents.add(Component.translatable(
                     "item.basebuster.faction_pledge.bound_to",
                     Component.literal(boundFaction).withStyle(color)));
-            tooltipComponents.add(
-                    Component.translatable("item.basebuster.faction_pledge.bound_hint_adopt"));
+            Player viewer = Minecraft.getInstance().player;
+            if (viewer != null && viewer.getTeam() != null
+                    && viewer.getTeam().getName().equals(boundFaction)) {
+                tooltipComponents.add(
+                        Component.translatable("item.basebuster.faction_pledge.bound_hint_leave"));
+            } else {
+                tooltipComponents.add(
+                        Component.translatable("item.basebuster.faction_pledge.bound_hint_adopt"));
+            }
             tooltipComponents.add(
                     Component.translatable("item.basebuster.faction_pledge.bound_hint_create"));
         } else {

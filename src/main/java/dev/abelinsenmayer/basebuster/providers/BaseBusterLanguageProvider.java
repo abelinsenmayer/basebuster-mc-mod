@@ -60,9 +60,11 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("item.basebuster.faction_pledge.unbound_hint_create", "Sneak + right-click: create a new faction");
         this.add("item.basebuster.faction_pledge.bound_to", "Bound to faction: %s");
         this.add("item.basebuster.faction_pledge.bound_hint_adopt", "Right-click: join this faction");
+        this.add("item.basebuster.faction_pledge.bound_hint_leave", "Throw into fire/lava: renounce your faction");
         this.add("item.basebuster.faction_pledge.bound_hint_create", "Sneak + right-click: create a new faction");
         this.add("item.basebuster.faction_pledge.no_such_faction", "The faction '%s' no longer exists.");
         this.add("item.basebuster.faction_pledge.joined", "You joined faction '%s'!");
+        this.add("item.basebuster.faction_pledge.left", "By burning a faction pledge for your faction, you have renounced your loyalty to '%s'.");
         // Banner items delegate their description id to the standing block
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER1, "Victory Banner (Tier 1)");
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER2, "Victory Banner (Tier 2)");
