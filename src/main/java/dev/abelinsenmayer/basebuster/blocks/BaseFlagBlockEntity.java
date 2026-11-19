@@ -1,5 +1,6 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
+import com.mojang.authlib.GameProfile;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
 import dev.abelinsenmayer.basebuster.raids.Faction;
@@ -7,7 +8,6 @@ import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentMap;
@@ -18,11 +18,14 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
@@ -36,12 +39,16 @@ import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Team;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
@@ -60,16 +67,20 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
 
-    private Player owner = null;
-    private String ownerName = "NONE";
-    // Persisted so a flag loading with its chunk can look up its owner's
-    // stored banner design even while the owner is offline
+    // The name of the scoreboard team that owns this flag; null while unowned.
+    // Raider factions own flags through their faction teams (see
+    // Faction#ensureTeams), so this one field covers player and faction
+    // ownership alike -- a faction-owned flag is one whose owning team is a
+    // faction's.
     @Nullable
-    private UUID ownerUuid = null;
-    // Faction ownership replaces player ownership. While set, getOwner()
-    // returns null so grief protection no longer applies.
+    private String ownerTeamName = null;
+    // Ownership as written by pre-team saves, held only until
+    // migrateLegacyOwnership resolves it against the scoreboard once a level
+    // is attached. Never written to new saves.
     @Nullable
-    private Faction ownerFaction = null;
+    private String legacyOwnerName = null;
+    @Nullable
+    private UUID legacyOwnerUuid = null;
     private List<RepairTarget> repairTargets = new ArrayList<>();
 
     // Cumulative victory-banner counts needed to hold each level:
@@ -108,11 +119,12 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Persisted and synced to clients; toggled by right-clicking with a stick.
     private boolean debugBoundary = false;
 
-    // Progress toward a player's right-click capture, in [0, 1)
+    // Progress toward a team's right-click capture, in [0, 1)
     private float playerCaptureProgress = 0.0F;
-    // The player currently capturing; a different player's click resets progress
+    // Name of the team currently capturing: a different team's click resets
+    // progress, while teammates' clicks compound toward the same capture
     @Nullable
-    private UUID playerCapturerId = null;
+    private String playerCapturerTeam = null;
     // Game time of the capturer's most recent click
     private long lastPlayerCaptureTick = -1L;
 
@@ -138,9 +150,21 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         BlockState state = getBlockState();
         if (state.hasProperty(BaseFlagBlock.CAPTURED) && state.getValue(BaseFlagBlock.CAPTURED)) {
             // Flags captured before factions existed still read red
-            return this.ownerFaction != null ? this.ownerFaction.baseFlagColor() : DyeColor.RED;
+            Faction owner = this.ownerFaction();
+            return owner != null ? owner.baseFlagColor() : DyeColor.RED;
         }
         return this.flagColor;
+    }
+
+    /**
+     * The raider {@link Faction} this flag belongs to, or null when the
+     * owning team isn't a faction's team (player-team-owned and unowned
+     * flags). A flag is faction-owned exactly when its owning team is the
+     * team {@link Faction#ensureTeams} created for that faction.
+     */
+    @Nullable
+    private Faction ownerFaction() {
+        return this.ownerTeamName != null ? Faction.byName(this.ownerTeamName) : null;
     }
 
     /**
@@ -195,27 +219,28 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * isn't known yet.
      */
     private BannerPatternLayers factionPatternLayers() {
-        if (this.level == null || this.ownerFaction == null) {
+        Faction owner = this.ownerFaction();
+        if (this.level == null || owner == null) {
             return BannerPatternLayers.EMPTY;
         }
-        return this.ownerFaction.baseFlagPatterns(this.level.registryAccess());
+        return owner.baseFlagPatterns(this.level.registryAccess());
     }
 
     /**
-     * The display name of whoever controls this flag's territory -- the owning
-     * player's name, or the owning faction's name for a captured flag. Null
+     * The name of the team that controls this flag's territory -- a player
+     * faction's name, or the raider faction's name for a captured flag. Null
      * while the flag is unowned.
      */
     @Nullable
     public String getTerritoryOwnerName() {
-        if (ownerFaction != null) {
-            return ownerFaction.displayName();
-        }
-        return "NONE".equals(ownerName) ? null : ownerName;
+        return getOwnerTeamName();
     }
 
     public Component getInfoForDisplay() {
-        String ownerDisplay = ownerFaction != null ? ownerFaction.displayName() + " (faction)" : ownerName;
+        String teamName = getOwnerTeamName();
+        String ownerDisplay = teamName == null
+                ? "NONE"
+                : teamName + (this.ownerFaction() != null ? " (faction)" : "");
         Component name = getCustomName();
         return Component.literal(
                 (name != null ? "Name: " + name.getString() + "\n" : "")
@@ -244,6 +269,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     @Override
     public void clearRemoved() {
         super.clearRemoved();
+        migrateLegacyOwnership();
         syncDebugOverlayState();
         syncOwnerDesign();
     }
@@ -259,7 +285,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (!(this.level instanceof ServerLevel serverLevel)) {
             return;
         }
-        if (this.ownerFaction != null) {
+        if (this.ownerFaction() != null) {
             // Faction-owned flags fly their faction's standard; ones captured
             // before it existed pick it up as they load
             BannerPatternLayers standard = this.factionPatternLayers();
@@ -270,11 +296,12 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             }
             return;
         }
-        if (this.ownerUuid == null) {
+        String team = this.getOwnerTeamName();
+        if (team == null) {
             return;
         }
         FlagsSavedData.FlagDesign design =
-                FlagsSavedData.getOverworld(serverLevel).getPlayerDesign(this.ownerUuid);
+                FlagsSavedData.getOverworld(serverLevel).getTeamDesign(team);
         if (design == null) {
             return;
         }
@@ -355,15 +382,12 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (newLevel != this.baseLevel) {
             boolean leveledUp = newLevel > this.baseLevel;
             this.baseLevel = newLevel;
-            Player ownerPlayer = this.getOwner();
-            if (ownerPlayer != null) {
-                ownerPlayer.displayClientMessage(
-                        Component.literal(leveledUp
-                                        ? "Your base flag has leveled up to level " + newLevel + "!"
-                                        : "Your base flag has dropped to level " + newLevel + ".")
-                                .withStyle(leveledUp ? ChatFormatting.GREEN : ChatFormatting.RED),
-                        true);
-            }
+            notifyOwnerTeam(
+                    Component.literal(leveledUp
+                                    ? "Your team's flag" + nameSuffix() + " has leveled up to level " + newLevel + "!"
+                                    : "Your team's flag" + nameSuffix() + " has dropped to level " + newLevel + ".")
+                            .withStyle(leveledUp ? ChatFormatting.GREEN : ChatFormatting.RED),
+                    true);
             setChanged();
             serverLevel.sendBlockUpdated(flagPos, getBlockState(), getBlockState(), 3);
         }
@@ -374,9 +398,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * raid countdown is pending it ticks down toward the raid's arrival;
      * otherwise each tick rolls a fresh chance of starting one, so real
      * intervals scatter around {@link Config#RAID_TIMER_MEAN_DAYS} rather than
-     * firing on a fixed schedule. Only flags with an online player owner roll --
-     * unowned and faction-owned flags are never raided, and the owner must be
-     * online to hear the warning.
+     * firing on a fixed schedule. Only flags whose owning team has a member
+     * online roll -- unowned and faction-owned flags are never raided, and
+     * nobody hears the warning with the whole team offline.
      */
     public static void tick(Level level, BlockPos pos, BlockState state, BaseFlagBlockEntity blockEntity) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -392,8 +416,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (meanDays <= 0.0) {
             return;
         }
-        Player ownerPlayer = blockEntity.getOwner();
-        if (ownerPlayer == null) {
+        if (!blockEntity.isPlayerTeamOwned() || blockEntity.onlineOwnerMembers().isEmpty()) {
             return;
         }
         if (serverLevel.getRandom().nextDouble() * meanDays * TICKS_PER_DAY >= 1.0) {
@@ -403,23 +426,25 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (RaidSpawner.isRaidInProgress(serverLevel, pos)) {
             return;
         }
-        blockEntity.beginRaidCountdown(serverLevel, pos, ownerPlayer);
+        blockEntity.beginRaidCountdown(serverLevel, pos);
     }
 
     /**
-     * Starts this flag's raid countdown: the wither-spawn cue and the owner's
-     * warning message. A zero-second countdown skips the message and goes
-     * straight to {@link #launchRaid}.
+     * Starts this flag's raid countdown: the wither-spawn cue and the owning
+     * team's warning message. A zero-second countdown skips the message and
+     * goes straight to {@link #launchRaid}.
      */
-    private void beginRaidCountdown(ServerLevel serverLevel, BlockPos pos, Player ownerPlayer) {
+    private void beginRaidCountdown(ServerLevel serverLevel, BlockPos pos) {
         int countdownSeconds = Config.RAID_COUNTDOWN_SECONDS.get();
-        ownerPlayer.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
+        for (ServerPlayer member : onlineOwnerMembers()) {
+            member.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
+        }
         if (countdownSeconds <= 0) {
             this.launchRaid(serverLevel, pos);
             return;
         }
         this.raidCountdownTicks = countdownSeconds * 20;
-        ownerPlayer.displayClientMessage(approachWarning(pos, countdownSeconds), false);
+        notifyOwnerTeam(approachWarning(pos, countdownSeconds), false);
         setChanged();
     }
 
@@ -427,8 +452,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * Starts a raid countdown on this flag, e.g. when a player carrying the
      * Raid Omen effect crosses into its territory. After {@code delaySeconds}
      * the countdown hands off to {@link RaidSpawner} exactly like the periodic
-     * raid timer does. Unlike the periodic timer this doesn't need the owner
-     * online -- the warning message and sound are skipped when they're away.
+     * raid timer does. Unlike the periodic timer this doesn't need anyone
+     * online -- the warning message and sound are skipped when the whole
+     * owning team is away.
      *
      * @return whether the countdown started; false when one is already running
      *         or a raid is in progress (this mod doesn't stack raids on a flag)
@@ -439,21 +465,18 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                         && RaidSpawner.isRaidInProgress(serverLevel, getBlockPos()))) {
             return false;
         }
-        Player ownerPlayer = this.getOwner();
-        if (ownerPlayer != null) {
-            ownerPlayer.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
+        for (ServerPlayer member : onlineOwnerMembers()) {
+            member.playNotifySound(SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
         }
         this.raidCountdownTicks = delaySeconds * 20;
-        if (ownerPlayer != null) {
-            ownerPlayer.displayClientMessage(approachWarning(getBlockPos(), delaySeconds), false);
-        }
+        notifyOwnerTeam(approachWarning(getBlockPos(), delaySeconds), false);
         setChanged();
         return true;
     }
 
     /**
-     * The owner's "raiders are approaching" warning for a countdown that just
-     * started, naming the flag when it has a custom name.
+     * The owning team's "raiders are approaching" warning for a countdown
+     * that just started, naming the flag when it has a custom name.
      */
     private Component approachWarning(BlockPos pos, int countdownSeconds) {
         return Component.literal("Raiders are approaching " + flagDisplayName() + " at " + formatPos(pos)
@@ -461,10 +484,15 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 .withStyle(ChatFormatting.RED);
     }
 
-    /** "your flag" or 'your flag "<custom name>"' when the flag is named. */
+    /** "your team's flag" or 'your team's flag "<custom name>"' when the flag is named. */
     private String flagDisplayName() {
+        return "your team's flag" + nameSuffix();
+    }
+
+    /** ' "<custom name>"' when the flag is named, "" otherwise -- for embedding in messages. */
+    private String nameSuffix() {
         Component name = getCustomName();
-        return name != null ? "your flag \"" + name.getString() + "\"" : "your flag";
+        return name != null ? " \"" + name.getString() + "\"" : "";
     }
 
     private void tickRaidCountdown(ServerLevel serverLevel, BlockPos pos) {
@@ -474,14 +502,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return;
         }
         if (this.raidCountdownTicks == RAID_WARNING_TICKS) {
-            Player ownerPlayer = this.getOwner();
-            if (ownerPlayer != null) {
-                ownerPlayer.displayClientMessage(
-                        Component.literal("30 seconds until raiders reach " + flagDisplayName()
-                                        + " at " + formatPos(pos) + "!")
-                                .withStyle(ChatFormatting.RED),
-                        false);
-            }
+            notifyOwnerTeam(
+                    Component.literal("30 seconds until raiders reach " + flagDisplayName()
+                                    + " at " + formatPos(pos) + "!")
+                            .withStyle(ChatFormatting.RED),
+                    false);
         }
         if (this.raidCountdownTicks % RAID_SAVE_INTERVAL_TICKS == 0) {
             setChanged();
@@ -494,15 +519,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * same callback the manual raid triggers use.
      */
     private void launchRaid(ServerLevel serverLevel, BlockPos pos) {
-        RaidSpawner.startRaid(serverLevel, pos, () -> {
-            Player owner = this.getOwner();
-            if (owner != null) {
-                owner.displayClientMessage(
-                        Component.literal("The raid on your flag at " + formatPos(pos) + " has begun!")
-                                .withStyle(ChatFormatting.RED),
-                        false);
-            }
-        });
+        RaidSpawner.startRaid(serverLevel, pos, () -> notifyOwnerTeam(
+                Component.literal("The raid on " + flagDisplayName() + " at " + formatPos(pos) + " has begun!")
+                        .withStyle(ChatFormatting.RED),
+                false));
         setChanged();
     }
 
@@ -623,20 +643,23 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        if (tag.contains("owner_name") && this.level != null) {
-            this.ownerName = tag.getString("owner_name");
-            getOwner();  // Populate owner from online players (if possible)
-        }
-        if (tag.hasUUID("owner_uuid")) {
-            this.ownerUuid = tag.getUUID("owner_uuid");
-        }
-        if (tag.contains("owner_faction")) {
-            this.ownerFaction = Faction.byName(tag.getString("owner_faction"));
-            if (this.ownerFaction != null) {
-                this.owner = null;
-                this.ownerUuid = null;
-            }
+        if (tag.contains("owner_team")) {
+            this.ownerTeamName = tag.getString("owner_team");
+        } else if (tag.contains("owner_faction")) {
+            // Pre-team saves recorded the raider faction itself; the faction's
+            // team shares its name, so this maps straight onto team ownership
+            Faction faction = Faction.byName(tag.getString("owner_faction"));
+            this.ownerTeamName = faction != null ? faction.name() : null;
             // Unknown faction names (e.g. from an older save) load as unowned
+        } else {
+            // Pre-team saves recorded the owning player; migrateLegacyOwnership
+            // maps them onto their current team once a level is attached
+            if (tag.contains("owner_name")) {
+                this.legacyOwnerName = tag.getString("owner_name");
+            }
+            if (tag.hasUUID("owner_uuid")) {
+                this.legacyOwnerUuid = tag.getUUID("owner_uuid");
+            }
         }
         if (tag.contains("base_level")) {
             this.baseLevel = tag.getInt("base_level");
@@ -663,14 +686,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     @Override
     public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        if (ownerFaction != null) {
-            tag.putString("owner_name", this.ownerName);
-            tag.putString("owner_faction", this.ownerFaction.name());
-        } else if (owner != null) {
-            tag.putString("owner_name", owner.getDisplayName().getString());
-        }
-        if (this.ownerUuid != null) {
-            tag.putUUID("owner_uuid", this.ownerUuid);
+        if (this.ownerTeamName != null) {
+            tag.putString("owner_team", this.ownerTeamName);
         }
         tag.putInt("base_level", this.baseLevel);
         if (this.flagColor != DyeColor.BLACK) {
@@ -695,27 +712,127 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
     }
 
-    public Player getOwner() {
-        // Faction-owned flags have no player owner
-        if (ownerFaction != null) {
-            return null;
-        }
-        if (owner == null && this.level != null) {
-            this.level.players().stream().filter(player -> player.getDisplayName().getString().equals(this.ownerName)).findFirst().ifPresent(player -> this.owner = player);
-        }
-        return owner;
+    /**
+     * The scoreboard team that owns this flag, or null while unowned (or when
+     * the recorded team no longer exists). Resolves on both logical sides:
+     * the client scoreboard mirrors the server's teams.
+     */
+    @Nullable
+    public PlayerTeam getOwnerTeam() {
+        String team = this.getOwnerTeamName();
+        return team != null && this.level != null
+                ? this.level.getScoreboard().getPlayerTeam(team)
+                : null;
     }
 
-    public void setOwner(Player player) {
-        this.owner = player;
-        this.ownerName = player.getDisplayName().getString();
-        this.ownerUuid = player.getUUID();
-        this.ownerFaction = null;
+    /**
+     * The name of the owning team as persisted in NBT, or null while
+     * unowned. Unlike {@link #getOwnerTeam} this still reports the name when
+     * the team was deleted from the scoreboard.
+     */
+    @Nullable
+    public String getOwnerTeamName() {
+        this.migrateLegacyOwnership();
+        return this.ownerTeamName;
+    }
+
+    /**
+     * Resolves pre-team saves once the flag has a server level to consult:
+     * flags a player owned become owned by the team they're on now (or
+     * unowned when they have none), matching the join-a-team requirement
+     * this version introduces.
+     */
+    private void migrateLegacyOwnership() {
+        if (!(this.level instanceof ServerLevel serverLevel)
+                || this.ownerTeamName != null
+                || (this.legacyOwnerName == null && this.legacyOwnerUuid == null)) {
+            return;
+        }
+        String scoreboardName = this.legacyOwnerName;
+        if (this.legacyOwnerUuid != null) {
+            // getDisplayName can carry team decorations; the profile cache
+            // holds the bare scoreboard name for anyone who ever played here
+            Optional<GameProfile> profile = serverLevel.getServer().getProfileCache().get(this.legacyOwnerUuid);
+            if (profile.isPresent()) {
+                scoreboardName = profile.get().getName();
+            }
+        }
+        this.ownerTeamName = null;
+        if (scoreboardName != null) {
+            PlayerTeam team = this.level.getScoreboard().getPlayersTeam(scoreboardName);
+            if (team != null) {
+                this.ownerTeamName = team.getName();
+            }
+        }
+        this.legacyOwnerName = null;
+        this.legacyOwnerUuid = null;
+        setChanged();
+        serverLevel.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+    }
+
+    /**
+     * Whether {@code entity} is on the team that owns this flag; unowned
+     * flags answer false for everyone. The team comparison works for any
+     * entity -- players and raiders alike are scoreboard members.
+     */
+    public boolean isOwnedBy(Entity entity) {
+        PlayerTeam team = this.getOwnerTeam();
+        return team != null && entity.getTeam() == team;
+    }
+
+    /**
+     * Whether a raider {@link Faction} owns this flag -- i.e. the owning team
+     * is a faction's team. Faction-controlled areas block player respawn
+     * points and can neither be raided nor recaptured by raiders.
+     */
+    public boolean isFactionOwned() {
+        return this.ownerFaction() != null;
+    }
+
+    /** Whether a player team (as opposed to a raider faction) owns this flag. */
+    public boolean isPlayerTeamOwned() {
+        return this.getOwnerTeamName() != null && !this.isFactionOwned();
+    }
+
+    public boolean isUnowned() {
+        return this.getOwnerTeamName() == null;
+    }
+
+    /** Every online player on the owning team; empty while the flag is unowned. */
+    private List<ServerPlayer> onlineOwnerMembers() {
+        PlayerTeam team = this.getOwnerTeam();
+        MinecraftServer server = this.level instanceof ServerLevel serverLevel ? serverLevel.getServer() : null;
+        if (team == null || server == null) {
+            return List.of();
+        }
+        return team.getPlayers().stream()
+                .map(server.getPlayerList()::getPlayerByName)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /** Sends a message to every online member of the owning team. */
+    private void notifyOwnerTeam(Component message, boolean overlay) {
+        for (ServerPlayer member : onlineOwnerMembers()) {
+            member.displayClientMessage(message, overlay);
+        }
+    }
+
+    /**
+     * Transfers this flag to {@code team}: in-progress captures by raiders
+     * and rival teams reset, and a reclaimed raider flag restores its
+     * uncaptured look. The flag takes on the banner design the new team last
+     * stamped on one of its flags, if any.
+     */
+    public void setOwnerTeam(Team team) {
+        this.ownerTeamName = team.getName();
+        this.legacyOwnerName = null;
+        this.legacyOwnerUuid = null;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
         this.capturerFaction = null;
         this.playerCaptureProgress = 0.0F;
-        this.playerCapturerId = null;
+        this.playerCapturerTeam = null;
         this.lastPlayerCaptureTick = -1L;
         if (this.level instanceof ServerLevel serverLevel) {
             // Reclaiming a raider-captured flag restores its uncaptured appearance
@@ -726,10 +843,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 FlagsSavedData.getFromLevel(serverLevel).removeCapturedFlagLocation(pos);
             }
 
-            // The flag takes on the banner design its new owner last stamped
-            // on one of their flags, if any
+            // The flag takes on the banner design its new owning team last
+            // stamped on one of its flags, if any
             FlagsSavedData.FlagDesign design =
-                    FlagsSavedData.getOverworld(serverLevel).getPlayerDesign(player.getUUID());
+                    FlagsSavedData.getOverworld(serverLevel).getTeamDesign(team.getName());
             if (design != null) {
                 this.applyDesign(design.color(), design.patterns());
             } else {
@@ -738,18 +855,6 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             }
         }
         setChanged();
-    }
-
-    /**
-     * Whether a non-player {@link Faction} owns this flag.
-     * Faction-controlled areas block player respawn points.
-     */
-    public boolean isFactionOwned() {
-        return this.ownerFaction != null;
-    }
-
-    public boolean isUnowned() {
-        return "NONE".equals(this.ownerName) && this.ownerFaction == null;
     }
 
     /**
@@ -792,10 +897,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
 
         if (now % NOTIFY_INTERVAL_TICKS == 0) {
-            Player ownerPlayer = this.getOwner();
-            if (ownerPlayer != null) {
-                ownerPlayer.displayClientMessage(this.captureProgressMessage(), true);
-            }
+            notifyOwnerTeam(this.captureProgressMessage(), true);
         }
         setChanged();
     }
@@ -805,7 +907,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     private Component captureProgressMessage() {
-        return Component.literal("Your flag is being captured! " + progressBar(this.captureProgress))
+        return Component.literal("Your team's flag" + nameSuffix() + " is being captured! " + progressBar(this.captureProgress))
                 .withStyle(ChatFormatting.RED);
     }
 
@@ -816,31 +918,44 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     /**
-     * Advances a player's capture of this flag by one right-click.
+     * Advances the clicking player's team capture of this flag by one
+     * right-click.
      *
-     * <p>Only one player can hold capture progress at a time: a click from a
-     * different player discards the previous capturer's progress and starts the
-     * new player's count. Progress also resets if more than a second passes
-     * between clicks. At 100% the flag transfers to the clicking player,
-     * clearing any raider faction ownership and captured appearance.
+     * <p>The clicker must be on a team: flags belong to teams now, so a
+     * teamless player is turned away in red. Only one team can hold capture
+     * progress at a time -- a rival team's click discards the current
+     * progress -- while teammates' clicks compound toward the same capture,
+     * letting a squad take a flag faster together. Progress also resets if
+     * more than a second passes between clicks. At 100% the flag transfers
+     * to the clicking player's team, clearing any raider faction ownership
+     * and captured appearance.
      *
-     * @return whether the click was handled as a capture attempt (false when the
-     *         clicker already owns the flag or the flag belongs to another player)
+     * @return whether the click was handled as a capture attempt (false when
+     *         the clicker's team already owns the flag or it belongs to
+     *         another player team)
      */
     public boolean advancePlayerCapture(Player player) {
         if (!(this.level instanceof ServerLevel serverLevel)) {
             return false;
         }
 
-        Player currentOwner = this.getOwner();
-        if (currentOwner != null && currentOwner.getUUID().equals(player.getUUID())) {
+        Team playerTeam = player.getTeam();
+        if (playerTeam == null) {
+            player.displayClientMessage(
+                    Component.literal("You have to join a team in order to claim a faction flag.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return true;
+        }
+
+        if (this.isOwnedBy(player)) {
             return false;
         }
 
-        // Flags owned by another player can't be captured at all
-        if (currentOwner != null) {
+        // Flags owned by another player team can't be captured at all
+        if (this.isPlayerTeamOwned()) {
             player.displayClientMessage(
-                    Component.literal("You cannot capture a flag owned by another player.")
+                    Component.literal("You cannot capture a flag owned by another team.")
                             .withStyle(ChatFormatting.RED),
                     true);
             return false;
@@ -848,7 +963,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
         // A flag nobody owns is claimed instantly, no clicks needed
         if (this.isUnowned()) {
-            this.completePlayerCapture(player);
+            this.completePlayerCapture(player, playerTeam);
             return true;
         }
 
@@ -856,19 +971,19 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (this.lastPlayerCaptureTick >= 0 && now - this.lastPlayerCaptureTick > PLAYER_CAPTURE_TIMEOUT_TICKS) {
             // The previous capturer stopped clicking for over a second
             this.playerCaptureProgress = 0.0F;
-            this.playerCapturerId = null;
+            this.playerCapturerTeam = null;
         }
         this.lastPlayerCaptureTick = now;
 
-        if (this.playerCapturerId != null && !this.playerCapturerId.equals(player.getUUID())) {
-            // Contested: someone else was mid-capture, so their progress resets
+        if (this.playerCapturerTeam != null && !this.playerCapturerTeam.equals(playerTeam.getName())) {
+            // Contested: another team was mid-capture, so their progress resets
             this.playerCaptureProgress = 0.0F;
         }
-        this.playerCapturerId = player.getUUID();
+        this.playerCapturerTeam = playerTeam.getName();
         this.playerCaptureProgress += Config.FLAG_CAPTURE_PLAYER_PROGRESS_PER_CLICK.get().floatValue();
 
         if (this.playerCaptureProgress >= 1.0F) {
-            this.completePlayerCapture(player);
+            this.completePlayerCapture(player, playerTeam);
             return true;
         }
 
@@ -880,35 +995,36 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         return true;
     }
 
-    private void completePlayerCapture(Player player) {
+    private void completePlayerCapture(Player player, Team team) {
         this.playerCaptureProgress = 0.0F;
-        this.playerCapturerId = null;
+        this.playerCapturerTeam = null;
         this.lastPlayerCaptureTick = -1L;
-        this.setOwner(player);
+        this.setOwnerTeam(team);
         if (this.level instanceof ServerLevel serverLevel) {
             serverLevel.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
         }
         player.displayClientMessage(
-                Component.literal("Flag captured! You are now the owner.")
+                Component.literal("Flag captured! Your team now owns it.")
                         .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD),
                 true);
     }
 
     private void captureByFaction(Faction faction, ServerLevel serverLevel) {
-        Player formerOwner = this.getOwner();
+        // Snapshotted before the transfer so the displaced team still gets told
+        List<ServerPlayer> formerOwnerMembers = this.onlineOwnerMembers();
         // A captured flag can no longer repair its surroundings; drop them like
         // a flag broken by a player, but with no player to credit
         this.abandonRepairs(null);
 
-        this.owner = null;
-        this.ownerName = faction.displayName();
-        this.ownerUuid = null;
-        this.ownerFaction = faction;
+        // Ownership passes to the raider faction's own scoreboard team
+        this.ownerTeamName = faction.name();
+        this.legacyOwnerName = null;
+        this.legacyOwnerUuid = null;
         this.captureProgress = 0.0F;
         this.capturerTicks.clear();
         this.capturerFaction = null;
         this.playerCaptureProgress = 0.0F;
-        this.playerCapturerId = null;
+        this.playerCapturerTeam = null;
         this.lastPlayerCaptureTick = -1L;
 
         BlockPos pos = getBlockPos();
@@ -921,9 +1037,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         // The area is now faction-controlled: no one may keep a respawn point in it
         FlagSpawnProtection.clearSpawnsInArea(serverLevel, pos);
 
-        if (formerOwner != null) {
-            formerOwner.displayClientMessage(
-                    Component.literal("Your base flag has been captured!")
+        for (ServerPlayer member : formerOwnerMembers) {
+            member.displayClientMessage(
+                    Component.literal("Your team's flag" + nameSuffix() + " has been captured!")
                             .withStyle(ChatFormatting.RED, ChatFormatting.BOLD),
                     true);
         }

@@ -38,6 +38,7 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.scores.Team;
 
 import javax.annotation.Nullable;
 
@@ -112,9 +113,13 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
         // AbstractBannerBlock applies the item's custom name to the block entity
         super.setPlacedBy(level, pos, state, placer, stack);
         if (!level.isClientSide && placer instanceof Player player) {
+            // Flags belong to the placer's team, not to the player; a
+            // teamless placer is refused the whole placement earlier (see
+            // BaseBusterEventBus#onFlagPlace)
+            Team team = player.getTeam();
             BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
-            if (blockEntity != null) {
-                blockEntity.setOwner(player);
+            if (team != null && blockEntity != null) {
+                blockEntity.setOwnerTeam(team);
             }
         }
     }
@@ -208,10 +213,9 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
             }
             if (!level.isClientSide) {
                 BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
-                Player owner = blockEntity != null ? blockEntity.getOwner() : null;
-                if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+                if (blockEntity == null || !blockEntity.isOwnedBy(player)) {
                     player.displayClientMessage(
-                            Component.literal("Only the flag's owner can rename it")
+                            Component.literal("Only the flag's owning team can rename it")
                                     .withStyle(ChatFormatting.RED),
                             true);
                     return ItemInteractionResult.sidedSuccess(level.isClientSide);
@@ -226,15 +230,15 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
             return ItemInteractionResult.sidedSuccess(level.isClientSide);
         }
 
-        // Banner design: the owner can stamp a banner's base color and
-        // patterns onto the flag; the banner is consumed like a name tag
+        // Banner design: a member of the owning team can stamp a banner's
+        // base color and patterns onto the flag; the banner is consumed like
+        // a name tag
         if (stack.getItem() instanceof BannerItem) {
             if (!level.isClientSide) {
                 BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
-                Player owner = blockEntity != null ? blockEntity.getOwner() : null;
-                if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+                if (blockEntity == null || !blockEntity.isOwnedBy(player)) {
                     player.displayClientMessage(
-                            Component.literal("Only the flag's owner can change its design")
+                            Component.literal("Only the flag's owning team can change its design")
                                     .withStyle(ChatFormatting.RED),
                             true);
                     return ItemInteractionResult.sidedSuccess(level.isClientSide);
@@ -242,11 +246,13 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                 FlagsSavedData.FlagDesign design = blockEntity.applyBannerDesign(stack);
                 level.sendBlockUpdated(pos, state, state, 3);
 
-                // Remember the design on the overworld's data so it follows the
-                // player across dimensions: every flag they own takes it on,
-                // including flags they place or capture later (see setOwner)
+                // Remember the design on the overworld's data so it follows
+                // the team across dimensions: every flag it owns takes it on,
+                // including flags its members place or capture later (see
+                // setOwnerTeam)
+                String ownerTeam = blockEntity.getOwnerTeamName();
                 FlagsSavedData.getOverworld((ServerLevel) level)
-                        .setPlayerDesign(player.getUUID(), design);
+                        .setTeamDesign(ownerTeam, design);
                 for (ServerLevel flagLevel : level.getServer().getAllLevels()) {
                     for (BlockPos flagPos : FlagsSavedData.getFromLevel(flagLevel).getFlagLocations()) {
                         // Flags in unloaded chunks aren't touched here (same
@@ -258,8 +264,8 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                             continue;
                         }
                         if (flagLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity other
-                                && other.getOwner() != null
-                                && other.getOwner().getUUID().equals(player.getUUID())) {
+                                && other != blockEntity
+                                && ownerTeam.equals(other.getOwnerTeamName())) {
                             other.applyDesign(design.color(), design.patterns());
                             flagLevel.sendBlockUpdated(flagPos, other.getBlockState(), other.getBlockState(), 3);
                         }
@@ -311,8 +317,9 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
     }
 
     /**
-     * Starts a raid targeting this flag. Only player-owned flags can be raided:
-     * an unowned flag is just a marker, and a raider-owned one is already captured.
+     * Starts a raid targeting this flag. Only player-team-owned flags can be
+     * raided: an unowned flag is just a marker, and a faction-owned one is
+     * already captured.
      */
     private ItemInteractionResult useRaidTrigger(ItemStack stack, Level level, BlockPos pos, Player player) {
         BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
@@ -321,16 +328,19 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
         }
 
         if (!level.isClientSide) {
-            if (blockEntity.getOwner() == null) {
+            if (!blockEntity.isPlayerTeamOwned()) {
                 player.displayClientMessage(
-                        Component.literal("Only a player-owned flag can be raided"), true);
+                        Component.literal("Only a team-owned flag can be raided"), true);
                 return ItemInteractionResult.CONSUME;
             }
             int raidTier = RaidSpawner.raidTier((ServerLevel) level, pos);
+            Component flagName = blockEntity.getCustomName();
             // The party materializes once its path searches finish, some
             // ticks later; announce the raid then, not at trigger time
             if (RaidSpawner.startRaid((ServerLevel) level, pos, () -> player.displayClientMessage(
-                    Component.literal("A level " + raidTier + " raid has begun!"), false))) {
+                    Component.literal("A level " + raidTier + " raid on the flag"
+                            + (flagName != null ? " \"" + flagName.getString() + "\"" : "")
+                            + " has begun!"), false))) {
                 if (!player.hasInfiniteMaterials()) {
                     stack.shrink(1);
                 }

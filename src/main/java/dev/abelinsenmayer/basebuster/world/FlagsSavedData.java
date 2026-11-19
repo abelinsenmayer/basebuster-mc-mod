@@ -19,22 +19,23 @@ public class FlagsSavedData extends SavedData {
     // Subset of flagLocations whose flags are owned by the raider faction.
     // Tracked here so raiders far from the flag's chunk know not to path to it.
     private Set<BlockPos> capturedFlagLocations = new HashSet<>();
-    // Player id -> banner design they last stamped on one of their flags.
-    // Applied to every flag they own, including ones they place later.
-    // Stored only on the overworld's copy of this data (see getOverworld).
-    private Map<UUID, FlagDesign> playerDesigns = new HashMap<>();
+    // Team name -> banner design its members last stamped on one of their
+    // flags. Applied to every flag the team owns, including ones its members
+    // place or capture later. Stored only on the overworld's copy of this
+    // data (see getOverworld).
+    private Map<String, FlagDesign> teamDesigns = new HashMap<>();
 
     /** A banner design stamped on a flag: base color plus pattern layers. */
     public record FlagDesign(DyeColor color, BannerPatternLayers patterns) {}
 
-    /** The banner design the player last applied to a flag, or null if they never have. */
+    /** The banner design the team last applied to a flag, or null if it never has. */
     @Nullable
-    public FlagDesign getPlayerDesign(UUID playerId) {
-        return this.playerDesigns.get(playerId);
+    public FlagDesign getTeamDesign(String teamName) {
+        return this.teamDesigns.get(teamName);
     }
 
-    public void setPlayerDesign(UUID playerId, FlagDesign design) {
-        this.playerDesigns.put(playerId, design);
+    public void setTeamDesign(String teamName, FlagDesign design) {
+        this.teamDesigns.put(teamName, design);
         this.setDirty();
     }
 
@@ -90,16 +91,16 @@ public class FlagsSavedData extends SavedData {
                     .mapToObj(BlockPos::of)
                     .collect(Collectors.toCollection(HashSet::new));
         }
-        if (tag.contains("player_designs")) {
-            CompoundTag designsTag = tag.getCompound("player_designs");
+        if (tag.contains("team_designs")) {
+            CompoundTag designsTag = tag.getCompound("team_designs");
             for (String key : designsTag.getAllKeys()) {
                 CompoundTag designTag = designsTag.getCompound(key);
                 BannerPatternLayers patterns = BannerPatternLayers.CODEC
                         .parse(lookupProvider.createSerializationContext(NbtOps.INSTANCE), designTag.get("patterns"))
                         .result()
                         .orElse(BannerPatternLayers.EMPTY);
-                data.playerDesigns.put(
-                        UUID.fromString(key),
+                data.teamDesigns.put(
+                        key,
                         new FlagDesign(DyeColor.byId(designTag.getInt("color")), patterns));
             }
         }
@@ -110,17 +111,17 @@ public class FlagsSavedData extends SavedData {
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
         tag.putLongArray("flag_locations", this.flagLocations.stream().map(BlockPos::asLong).toList());
         tag.putLongArray("captured_flag_locations", this.capturedFlagLocations.stream().map(BlockPos::asLong).toList());
-        if (!this.playerDesigns.isEmpty()) {
+        if (!this.teamDesigns.isEmpty()) {
             CompoundTag designsTag = new CompoundTag();
-            this.playerDesigns.forEach((playerId, design) -> {
+            this.teamDesigns.forEach((teamName, design) -> {
                 CompoundTag designTag = new CompoundTag();
                 designTag.putInt("color", design.color().getId());
                 designTag.put("patterns", BannerPatternLayers.CODEC
                         .encodeStart(provider.createSerializationContext(NbtOps.INSTANCE), design.patterns())
                         .getOrThrow());
-                designsTag.put(playerId.toString(), designTag);
+                designsTag.put(teamName, designTag);
             });
-            tag.put("player_designs", designsTag);
+            tag.put("team_designs", designsTag);
         }
         return tag;
     }
@@ -130,9 +131,9 @@ public class FlagsSavedData extends SavedData {
     }
 
     /**
-     * The overworld's flags data, fetched from any dimension. Per-player flag
-     * designs live here so they follow players across dimensions; flag
-     * locations stay per-dimension via {@link #getFromLevel}.
+     * The overworld's flags data, fetched from any dimension. Per-team flag
+     * designs live here so they follow the team's members across dimensions;
+     * flag locations stay per-dimension via {@link #getFromLevel}.
      */
     public static FlagsSavedData getOverworld(ServerLevel level) {
         return getFromLevel(level.getServer().overworld());

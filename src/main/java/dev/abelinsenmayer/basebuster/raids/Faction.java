@@ -11,12 +11,16 @@ import net.minecraft.core.HolderGetter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.raid.Raid;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.entity.BannerPattern;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BannerPatterns;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
 
 import javax.annotation.Nullable;
 
@@ -29,8 +33,9 @@ import javax.annotation.Nullable;
  * -- spots, routes, raid metadata, squad leaders -- is interface-typed and
  * faction-agnostic.
  *
- * <p>A faction is also a flag identity: when its raiders capture a base flag,
- * the flag records this enum as its owner (the name shown for the territory
+ * <p>A faction is also a flag identity, backed by the scoreboard team
+ * {@link #ensureTeams} creates for it: when its raiders capture a base flag,
+ * the flag records that team as its owner (the name shown for the territory
  * comes from {@link #displayName}) and hoists the faction's standard --
  * {@link #baseFlagColor} plus {@link #baseFlagPatterns}. The victory banner a
  * defeated raid drops is that same standard crossed out with a red X (see
@@ -154,6 +159,32 @@ public enum Faction {
      */
     public String displayName() {
         return name();
+    }
+
+    /**
+     * The scoreboard team associated with this faction, created for every
+     * faction by {@link #ensureTeams} at server start. Shares the faction's
+     * name; the faction's raiders join it when they enter the world, and flags
+     * a raid captures record it as their owning team.
+     */
+    @Nullable
+    public PlayerTeam getTeam(MinecraftServer server) {
+        return server.getScoreboard().getPlayerTeam(name());
+    }
+
+    /**
+     * Creates a scoreboard team for every faction that lacks one. Runs at
+     * server start on every world, so factions added after a world was
+     * created backfill their teams the next time it loads.
+     */
+    public static void ensureTeams(MinecraftServer server) {
+        Scoreboard scoreboard = server.getScoreboard();
+        for (Faction faction : values()) {
+            if (scoreboard.getPlayerTeam(faction.name()) == null) {
+                PlayerTeam team = scoreboard.addPlayerTeam(faction.name());
+                team.setDisplayName(Component.literal(faction.displayName()));
+            }
+        }
     }
 
     /** The base color of the flag this faction hoists over captured bases. */

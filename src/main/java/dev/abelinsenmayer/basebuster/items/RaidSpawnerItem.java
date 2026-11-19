@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
  * Testing tool disguised as rotten flesh: right-clicking a block starts a
- * raid on the nearest player-owned flag, with the whole party spawning on
+ * raid on the nearest team-owned flag, with the whole party spawning on
  * the clicked face instead of a dynamically-chosen point on the spawn ring.
  */
 public class RaidSpawnerItem extends Item {
@@ -34,22 +34,26 @@ public class RaidSpawnerItem extends Item {
         ServerLevel serverLevel = (ServerLevel) level;
         // Spawn on the face that was clicked, like placing a block
         BlockPos spawnPos = context.getClickedPos().relative(context.getClickedFace());
-        BlockPos flagPos = nearestRaidableFlag(serverLevel, spawnPos);
-        if (flagPos == null) {
+        BaseFlagBlockEntity flagEntity = nearestRaidableFlag(serverLevel, spawnPos);
+        if (flagEntity == null) {
             if (player != null) {
                 player.displayClientMessage(
-                        Component.literal("No player-owned flag found"), true);
+                        Component.literal("No team-owned flag found"), true);
             }
             return InteractionResult.CONSUME;
         }
 
+        BlockPos flagPos = flagEntity.getBlockPos();
         int raidTier = RaidSpawner.raidTier(serverLevel, flagPos);
+        Component flagName = flagEntity.getCustomName();
         // The party materializes once its path searches finish, some ticks
         // later; announce the raid then, not at trigger time
         if (RaidSpawner.startRaidAt(serverLevel, flagPos, spawnPos, () -> {
             if (player != null) {
                 player.displayClientMessage(
-                        Component.literal("A level " + raidTier + " raid has begun!"), false);
+                        Component.literal("A level " + raidTier + " raid on the flag"
+                                + (flagName != null ? " \"" + flagName.getString() + "\"" : "")
+                                + " has begun!"), false);
             }
         })) {
             if (player != null && !player.hasInfiniteMaterials()) {
@@ -64,26 +68,26 @@ public class RaidSpawnerItem extends Item {
 
     /**
      * The nearest flag that could take a raid: a loaded flag block entity
-     * owned by a player (unowned and raider-captured flags are skipped, as
-     * in {@link dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock}'s spawn
-     * egg trigger). Flags in unloaded chunks are ignored rather than
+     * owned by a player team (unowned and raider-captured flags are skipped,
+     * as in {@link dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock}'s
+     * spawn egg trigger). Flags in unloaded chunks are ignored rather than
      * force-loaded.
      */
-    private static BlockPos nearestRaidableFlag(ServerLevel level, BlockPos from) {
-        BlockPos nearest = null;
+    private static BaseFlagBlockEntity nearestRaidableFlag(ServerLevel level, BlockPos from) {
+        BaseFlagBlockEntity nearest = null;
         double bestDist = Double.MAX_VALUE;
         for (BlockPos flag : FlagsSavedData.getFromLevel(level).getFlagLocations()) {
             if (!level.isLoaded(flag)) {
                 continue;
             }
             BlockEntity blockEntity = level.getBlockEntity(flag);
-            if (!(blockEntity instanceof BaseFlagBlockEntity flagEntity) || flagEntity.getOwner() == null) {
+            if (!(blockEntity instanceof BaseFlagBlockEntity flagEntity) || !flagEntity.isPlayerTeamOwned()) {
                 continue;
             }
             double dist = flag.distSqr(from);
             if (dist < bestDist) {
                 bestDist = dist;
-                nearest = flag;
+                nearest = flagEntity;
             }
         }
         return nearest;

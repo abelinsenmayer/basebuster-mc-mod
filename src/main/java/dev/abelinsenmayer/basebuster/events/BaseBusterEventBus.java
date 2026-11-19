@@ -7,6 +7,7 @@ import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.IRaider;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
+import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -25,8 +26,10 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.scores.PlayerTeam;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.util.TriState;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -75,10 +78,34 @@ public class BaseBusterEventBus {
      * config. The game rule suppresses {@code Raids.createOrExtendRaid} (the
      * sole vanilla raid trigger) and stops any raid already in progress,
      * while leaving the raid omen effect itself fully intact.
+     *
+     * <p>Also backfills the scoreboard team every {@link Faction} rides under:
+     * running at each server start means worlds created before a faction
+     * existed still get its team, and new worlds get them all up front.
      */
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         syncDisableRaidsGameRule(event.getServer());
+        Faction.ensureTeams(event.getServer());
+    }
+
+    /**
+     * Every raider that enters the world joins its faction's scoreboard team,
+     * which puts faction creatures and faction-owned flags under one team
+     * identity. Team membership isn't persisted on entities, so this fires on
+     * every join -- fresh spawns, spawn eggs, summons, and chunk reloads alike.
+     */
+    @SubscribeEvent
+    public void onEntityJoinWorld(EntityJoinLevelEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)
+                || !(event.getEntity() instanceof IRaider raider)
+                || raider.getFaction() == null) {
+            return;
+        }
+        PlayerTeam team = raider.getFaction().getTeam(serverLevel.getServer());
+        if (team != null) {
+            serverLevel.getScoreboard().addPlayerToTeam(event.getEntity().getScoreboardName(), team);
+        }
     }
 
     /** Applies the config to the {@code disableRaids} game rule; call on the server thread. */
@@ -148,11 +175,13 @@ public class BaseBusterEventBus {
     }
 
     /**
-     * Keeps flag protection areas from overlapping: a new flag must sit far
-     * enough from every existing flag that their spheres can never touch,
-     * even after either side levels up. Spacing uses the max radius for the
-     * existing flag (its current level can grow) plus the new flag's level-1
-     * radius. Cancelling also refunds the item to the placer.
+     * Gates flag placement. First, flags belong to teams: a player without a
+     * team can't place one at all, and is told so in red. Second, keeps flag
+     * protection areas from overlapping: a new flag must sit far enough from
+     * every existing flag that their spheres can never touch, even after
+     * either side levels up. Spacing uses the max radius for the existing
+     * flag (its current level can grow) plus the new flag's level-1 radius.
+     * Cancelling also refunds the item to the placer.
      */
     @SubscribeEvent
     public void onFlagPlace(BlockEvent.EntityPlaceEvent event) {
@@ -160,6 +189,14 @@ public class BaseBusterEventBus {
             return;
         }
         if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        if (event.getEntity() instanceof ServerPlayer placer && placer.getTeam() == null) {
+            event.setCanceled(true);
+            placer.sendSystemMessage(Component.literal(
+                    "You have to join a team in order to claim a faction flag.")
+                    .withStyle(ChatFormatting.RED));
             return;
         }
 
@@ -175,8 +212,12 @@ public class BaseBusterEventBus {
 
         event.setCanceled(true);
         if (event.getEntity() instanceof ServerPlayer player) {
+            Component conflictName = serverLevel.getBlockEntity(conflict) instanceof BaseFlagBlockEntity flagEntity
+                    ? flagEntity.getCustomName()
+                    : null;
             player.sendSystemMessage(Component.literal(
-                    "Too close to the flag at " + conflict.getX() + " " + conflict.getY() + " " + conflict.getZ()
+                    "Too close to the flag" + (conflictName != null ? " \"" + conflictName.getString() + "\"" : "")
+                            + " at " + conflict.getX() + " " + conflict.getY() + " " + conflict.getZ()
                             + ": base flags must be at least " + minSeparation + " blocks apart.")
                     .withStyle(ChatFormatting.RED));
         }
@@ -257,13 +298,13 @@ public class BaseBusterEventBus {
 
     /**
      * Omen trigger: a player carrying Bad Omen or Raid Omen who enters
-     * territory claimed by a <em>different</em> player loses the effect, and
+     * territory claimed by a <em>different</em> team loses the effect, and
      * the flag's own raid countdown (the same persisted timer periodic raids
      * use) launches a raid on that flag after
-     * {@link Config#RAID_OMEN_COUNTDOWN_SECONDS} seconds. Unowned flags, the
-     * player's own flag, and faction-held territory don't consume the effect,
-     * nor does a flag that can't start a countdown (one pending, or a raid
-     * already in progress).
+     * {@link Config#RAID_OMEN_COUNTDOWN_SECONDS} seconds. Unowned flags, a
+     * flag the player's own team holds, and faction-held territory don't
+     * consume the effect, nor does a flag that can't start a countdown (one
+     * pending, or a raid already in progress).
      */
     private static void tryTriggerOmenRaid(ServerLevel level, BlockPos flagPos, ServerPlayer player) {
         boolean hasRaidOmen = player.hasEffect(MobEffects.RAID_OMEN);
@@ -272,7 +313,8 @@ public class BaseBusterEventBus {
             return;
         }
         if (!(level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)
-                || flagEntity.isFactionOwned()) {
+                || flagEntity.isFactionOwned()
+                || flagEntity.isOwnedBy(player)) {
             return;
         }
         String owner = flagEntity.getTerritoryOwnerName();
@@ -285,9 +327,11 @@ public class BaseBusterEventBus {
         }
         player.removeEffect(MobEffects.RAID_OMEN);
         player.removeEffect(MobEffects.BAD_OMEN);
+        Component flagName = flagEntity.getCustomName();
         player.displayClientMessage(
-                Component.literal("Your omen stirs -- a raid will strike " + owner
-                                + "'s territory in " + countdownSeconds + " seconds")
+                Component.literal("Your omen stirs -- a raid will strike " + owner + "'s flag"
+                                + (flagName != null ? " \"" + flagName.getString() + "\"" : "")
+                                + " in " + countdownSeconds + " seconds")
                         .withStyle(ChatFormatting.DARK_RED),
                 false);
     }
@@ -386,11 +430,10 @@ public class BaseBusterEventBus {
         BaseFlagBlockEntity flagEntity = level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity entity
                 ? entity
                 : null;
-        Player owner = flagEntity != null ? flagEntity.getOwner() : null;
-        if (owner == null || !owner.getUUID().equals(player.getUUID())) {
+        if (flagEntity == null || !flagEntity.isOwnedBy(player)) {
             denyBreak(event, player, brokenPos.equals(flagPos)
-                    ? "You cannot break a flag you do not own."
-                    : "You cannot break banners attached to a flag you do not own.");
+                    ? "You cannot break a flag your team does not own."
+                    : "You cannot break banners attached to a flag your team does not own.");
             return true;
         }
         return false;
@@ -435,8 +478,8 @@ public class BaseBusterEventBus {
 
     /**
      * Determines whether a block destroyed by a known entity falls under a nearby flag's protection.
-     * If the culprit doesn't own the protecting flag, the block is registered as a repair target
-     * so the flag can restore it later.
+     * If the culprit isn't on the team that owns the protecting flag, the block is registered
+     * as a repair target so the flag can restore it later.
      *
      * @param culprit     the entity responsible for destroying the block
      * @param pos         the position of the destroyed block
@@ -477,8 +520,9 @@ public class BaseBusterEventBus {
             return false;
         }
 
-        // If the flag has no owner, or the culprit owns it, do nothing
-        if (flagEntity.getOwner() == null || flagEntity.getOwner().getName().equals(culprit.getName())) {
+        // If the flag has no owner, or the culprit is on the team that owns
+        // it, do nothing
+        if (flagEntity.isUnowned() || flagEntity.isOwnedBy(culprit)) {
             return false;
         }
 
