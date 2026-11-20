@@ -132,6 +132,11 @@ public class BaseBusterEventBus {
      * another raider, which also keeps HurtByTargetGoal from triggering
      * infighting. Event-level (not a hurt override) so it covers every
      * {@link IRaider} species and cross-species hits uniformly.
+     *
+     * <p>The faction teams' friendlyFire flag ({@link Faction#ensureTeams})
+     * does not replace this: vanilla only consults allowFriendlyFire when the
+     * victim is a player (Player.canHarmPlayer), so mob->mob damage and
+     * teammate retaliation would go through unchecked.
      */
     @SubscribeEvent
     public void onRaiderFriendlyFire(LivingIncomingDamageEvent event) {

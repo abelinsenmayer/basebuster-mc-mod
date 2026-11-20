@@ -180,10 +180,17 @@ public enum Faction {
     public static void ensureTeams(MinecraftServer server) {
         Scoreboard scoreboard = server.getScoreboard();
         for (Faction faction : values()) {
-            if (scoreboard.getPlayerTeam(faction.name()) == null) {
-                PlayerTeam team = scoreboard.addPlayerTeam(faction.name());
+            PlayerTeam team = scoreboard.getPlayerTeam(faction.name());
+            if (team == null) {
+                team = scoreboard.addPlayerTeam(faction.name());
                 team.setDisplayName(Component.literal(faction.displayName()));
             }
+            // Set every start (not just on creation) so worlds whose teams
+            // predate this flag pick it up on next load. Vanilla only enforces
+            // the flag when the victim is a player -- raider-on-raider damage
+            // is still blocked by BaseBusterEventBus's LivingIncomingDamageEvent
+            // handler, since mob->mob damage never consults the team.
+            team.setAllowFriendlyFire(false);
         }
     }
 
