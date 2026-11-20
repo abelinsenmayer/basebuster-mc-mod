@@ -54,8 +54,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * </ul>
  *
  * <p>Tabs appear only when the screen was opened from a flag; the faction
- * pledge item (no flag) shows just the team tab's contents. From a flag the
- * base tab opens by default.
+ * founding document (no flag) shows just the team tab's contents. From a
+ * flag the base tab opens by default.
  */
 public class BaseFlagScreen extends Screen {
     /** A faction's current settings, used to prefill the team tab in edit mode. */
@@ -124,7 +124,7 @@ public class BaseFlagScreen extends Screen {
     private boolean resultIsError;
     private boolean awaitingResponse;
     // Edit mode only: the flag this screen manages; null while creating a
-    // faction from a pledge item
+    // faction from a founding document
     @Nullable
     private final BlockPos flagPos;
     @Nullable
@@ -133,7 +133,7 @@ public class BaseFlagScreen extends Screen {
     private final BaseInfo baseInfo;
     private Tab activeTab;
 
-    /** Create mode: opened from a faction pledge item, so only the team page shows. */
+    /** Create mode: opened from a faction founding document, so only the team page shows. */
     public BaseFlagScreen() {
         this(null, null, null);
     }
@@ -317,7 +317,7 @@ public class BaseFlagScreen extends Screen {
      * Called when the server's {@link CreateFactionResultPayload} arrives. A
      * failed save shows its message under the tab's button; a successful save
      * shows green feedback and keeps the screen open -- only creating a team
-     * from the pledge item (no flag) closes the GUI.
+     * from the founding document (no flag) closes the GUI.
      */
     public void onCreateResult(CreateFactionResultPayload result) {
         this.awaitingResponse = false;

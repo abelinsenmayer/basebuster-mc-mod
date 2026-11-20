@@ -44,8 +44,10 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.addEntityType(BaseBuster.RAIDER_RAVAGER_BOSS, "Ravager Raider Boss");
         this.addItem(BaseBuster.RAIDER_RAVAGER_BOSS_SPAWN_EGG, "Ravager Raider Boss Spawn Egg");
         this.addItem(BaseBuster.RAID_SPAWNER, "Raid Spawner");
+        this.addItem(BaseBuster.FACTION_FOUNDING_DOCUMENT, "Faction Founding Document");
+        this.add("item.basebuster.faction_founding_document.hint_create", "Right-click: found a new faction");
         this.addItem(BaseBuster.FACTION_PLEDGE, "Faction Pledge");
-        this.add("gui.basebuster.faction_pledge", "Faction Pledge");
+        this.add("gui.basebuster.faction_pledge", "Faction Founding Document");
         this.add("gui.basebuster.faction_pledge.name_hint", "[Enter your faction name]");
         this.add("gui.basebuster.faction_pledge.faction_color", "Faction color");
         this.add("gui.basebuster.faction_pledge.friendly_fire", "Allow friendly fire?");
@@ -59,6 +61,7 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.faction_pledge.not_member", "Only the flag's owning team can edit its faction.");
         this.add("gui.basebuster.faction_pledge.name_taken", "That faction name is already taken.");
         this.add("gui.basebuster.faction_pledge.name_invalid", "Invalid faction name.");
+        this.add("gui.basebuster.faction_pledge.no_document", "You need a Faction Founding Document in hand to create a faction.");
         this.add("gui.basebuster.faction_pledge.created", "Faction '%s' created!");
         this.add("gui.basebuster.base_management.title", "Base Settings");
         this.add("gui.basebuster.base_management.name_hint", "[Enter base name]");
@@ -78,14 +81,20 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.repairs.abandon_all", "Abandon all");
         this.add("gui.basebuster.repairs.repair", "Repair");
         this.add("item.basebuster.faction_pledge.unbound_hint_bind", "Right-click: bind to your current faction");
-        this.add("item.basebuster.faction_pledge.unbound_hint_create", "Sneak + right-click: create a new faction");
+        this.add("item.basebuster.faction_pledge.hint_villager", "Right-click a villager: issue a citizenship certificate");
         this.add("item.basebuster.faction_pledge.bound_to", "Bound to faction: %s");
         this.add("item.basebuster.faction_pledge.bound_hint_adopt", "Right-click: join this faction");
         this.add("item.basebuster.faction_pledge.bound_hint_leave", "Throw into fire/lava: renounce your faction");
-        this.add("item.basebuster.faction_pledge.bound_hint_create", "Sneak + right-click: create a new faction");
+        this.add("item.basebuster.faction_pledge.bound_hint_clear", "Sneak + right-click: clear the bound faction");
         this.add("item.basebuster.faction_pledge.no_such_faction", "The faction '%s' no longer exists.");
         this.add("item.basebuster.faction_pledge.joined", "You joined faction '%s'!");
         this.add("item.basebuster.faction_pledge.left", "By burning a faction pledge for your faction, you have renounced your loyalty to '%s'.");
+        this.addItem(BaseBuster.CITIZENSHIP_CERTIFICATE, "Citizenship Certificate");
+        this.add("item.basebuster.citizenship_certificate.bound_to", "Bound villager: %s");
+        this.add("item.basebuster.citizenship_certificate.profession", "Profession: %s");
+        this.add("item.basebuster.citizenship_certificate.hint_place", "Right-click the ground inside a team's base to release");
+        this.add("item.basebuster.citizenship_certificate.no_base", "The villager can only be released inside a team-owned flag's protection area.");
+        this.add("item.basebuster.citizenship_certificate.placed", "%s has joined '%s' as a citizen!");
         // Banner items delegate their description id to the standing block
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER1, "Victory Banner (Tier 1)");
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER2, "Victory Banner (Tier 2)");

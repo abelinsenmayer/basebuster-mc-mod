@@ -36,6 +36,15 @@ public class BaseBusterRecipeProvider extends RecipeProvider {
                 .unlockedBy("has_wool", has(ItemTags.WOOL))
                 .save(recipeOutput);
 
+        // A founding charter: paper, ink and quill sealed with gold
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, BaseBuster.FACTION_FOUNDING_DOCUMENT.get())
+                .requires(Items.PAPER)
+                .requires(Items.INK_SAC)
+                .requires(Items.FEATHER)
+                .requires(Items.GOLD_INGOT)
+                .unlockedBy("has_paper", has(Items.PAPER))
+                .save(recipeOutput);
+
         // A written pledge: paper with ink and a feather quill, tinted red
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, BaseBuster.FACTION_PLEDGE.get())
                 .requires(Items.PAPER)

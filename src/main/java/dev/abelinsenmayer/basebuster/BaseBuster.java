@@ -14,6 +14,8 @@ import dev.abelinsenmayer.basebuster.entities.RaiderRavagerBossEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderRavagerEntity;
 import dev.abelinsenmayer.basebuster.entities.RaiderVindicatorEntity;
 import dev.abelinsenmayer.basebuster.events.BaseBusterEventBus;
+import dev.abelinsenmayer.basebuster.items.CitizenshipCertificateItem;
+import dev.abelinsenmayer.basebuster.items.FactionFoundingDocumentItem;
 import dev.abelinsenmayer.basebuster.items.FactionPledgeItem;
 import dev.abelinsenmayer.basebuster.items.RaidSpawnerItem;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
@@ -110,9 +112,19 @@ public class BaseBuster {
     // nearest player-owned flag, spawning the party at the clicked spot
     public static final DeferredItem<RaidSpawnerItem> RAID_SPAWNER = ITEMS.register("raid_spawner", () -> new RaidSpawnerItem(new Item.Properties()));
 
-    // A paper certificate: sneak-right-click opens the faction pledge GUI;
-    // once bound to a faction, right-clicking joins that faction
+    // The charter that founds a faction: right-clicking opens the faction
+    // creation screen, and completing it consumes the document and seats
+    // the founder on the new team
+    public static final DeferredItem<FactionFoundingDocumentItem> FACTION_FOUNDING_DOCUMENT = ITEMS.register("faction_founding_document", () -> new FactionFoundingDocumentItem(new Item.Properties()));
+
+    // A paper certificate for an existing faction: unbound, right-clicking
+    // binds it to the player's current faction; bound, it joins that faction
     public static final DeferredItem<FactionPledgeItem> FACTION_PLEDGE = ITEMS.register("faction_pledge", () -> new FactionPledgeItem(new Item.Properties()));
+
+    // A villager bound to paper by an unbound faction pledge: right-clicking
+    // the ground inside a team-owned base's protection sphere releases the
+    // villager as a citizen of that base
+    public static final DeferredItem<CitizenshipCertificateItem> CITIZENSHIP_CERTIFICATE = ITEMS.register("citizenship_certificate", () -> new CitizenshipCertificateItem(new Item.Properties().stacksTo(16)));
 
     // Stored on a bound faction pledge: the name of the scoreboard team the
     // pledge joins when right-clicked. Absent = unbound pledge
@@ -247,7 +259,9 @@ public class BaseBuster {
                 output.accept(RAIDER_RAVAGER_SPAWN_EGG.get());
                 output.accept(RAIDER_RAVAGER_BOSS_SPAWN_EGG.get());
                 output.accept(RAID_SPAWNER.get());
+                output.accept(FACTION_FOUNDING_DOCUMENT.get());
                 output.accept(FACTION_PLEDGE.get());
+                output.accept(CITIZENSHIP_CERTIFICATE.get());
                 output.accept(VICTORY_BANNER_TIER1_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER2_ITEM.get());
                 output.accept(VICTORY_BANNER_TIER3_ITEM.get());

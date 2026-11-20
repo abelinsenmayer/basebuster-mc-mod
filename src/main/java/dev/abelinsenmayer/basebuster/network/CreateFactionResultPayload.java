@@ -14,9 +14,9 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
  * The server's answer to {@link CreateFactionPayload}. On success the client
- * closes the pledge screen; on failure it shows {@link #message} in red. The
- * client-only class references in {@link #handle} are resolved lazily, so this
- * record is safe to load on dedicated servers.
+ * closes the founding screen; on failure it shows {@link #message} in red.
+ * The client-only class references in {@link #handle} are resolved lazily, so
+ * this record is safe to load on dedicated servers.
  */
 public record CreateFactionResultPayload(boolean success, Component message)
         implements CustomPacketPayload {

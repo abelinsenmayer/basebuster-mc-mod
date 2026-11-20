@@ -7,6 +7,7 @@ import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.blocks.RaiderScaffoldingBlock;
 import dev.abelinsenmayer.basebuster.blocks.VictoryBannerBlock;
 import dev.abelinsenmayer.basebuster.entities.IRaider;
+import dev.abelinsenmayer.basebuster.items.CitizenshipCertificateItem;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
@@ -22,11 +23,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
@@ -432,6 +437,64 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
         this.pledgeThrowers.remove(event.getEntity().getUUID());
+    }
+
+    /**
+     * Papers, please: a faction pledge pressed against a villager becomes a
+     * {@link CitizenshipCertificateItem} carrying the villager's full NBT.
+     * The interaction is canceled so the trade GUI never opens. Canceled on
+     * both sides to keep the client's prediction in step (the swing plays
+     * either way), but the pledge conversion itself is server-side only.
+     *
+     * <p>{@code EntityInteractSpecific} is the primary path -- the client
+     * predicts a villager right-click as consumed, so only the INTERACT_AT
+     * packet reaches the server. {@code EntityInteract} is a fallback for
+     * predictions that pass through to a plain interact packet.
+     */
+    @SubscribeEvent
+    public void onVillagerPledgeInteractAt(PlayerInteractEvent.EntityInteractSpecific event) {
+        if (!(event.getTarget() instanceof Villager villager) || !isFactionPledge(event.getItemStack())) {
+            return;
+        }
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        convertPledgeToCertificate(event.getEntity(), event.getHand(), villager, event.getItemStack());
+    }
+
+    @SubscribeEvent
+    public void onVillagerPledgeInteract(PlayerInteractEvent.EntityInteract event) {
+        if (!(event.getTarget() instanceof Villager villager) || !isFactionPledge(event.getItemStack())) {
+            return;
+        }
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        convertPledgeToCertificate(event.getEntity(), event.getHand(), villager, event.getItemStack());
+    }
+
+    /**
+     * Any faction pledge can issue citizenship, bound or not: a bound pledge
+     * joins its faction on ordinary right-click, but on a villager it always
+     * issues a certificate instead.
+     */
+    private static boolean isFactionPledge(ItemStack stack) {
+        return stack.is(BaseBuster.FACTION_PLEDGE.get());
+    }
+
+    /** Server side: turns the held pledge into a certificate holding the villager, who leaves the world. */
+    private static void convertPledgeToCertificate(Player player, InteractionHand hand, Villager villager, ItemStack stack) {
+        if (villager.level().isClientSide() || villager.isRemoved()) {
+            return;
+        }
+        ItemStack certificate = CitizenshipCertificateItem.capture(villager);
+        villager.discard();
+        if (stack.getCount() == 1) {
+            player.setItemInHand(hand, certificate);
+        } else {
+            stack.shrink(1);
+            if (!player.addItem(certificate)) {
+                player.drop(certificate, false);
+            }
+        }
     }
 
     /**

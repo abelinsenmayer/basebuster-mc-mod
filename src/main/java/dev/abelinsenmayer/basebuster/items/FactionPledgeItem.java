@@ -1,7 +1,6 @@
 package dev.abelinsenmayer.basebuster.items;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
-import dev.abelinsenmayer.basebuster.client.BaseFlagScreen;
 import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -20,11 +19,11 @@ import net.minecraft.world.scores.Scoreboard;
 /**
  * A paper certificate for pledging to a faction. Stores the bound faction's
  * team name in the {@link BaseBuster#FACTION} data component. Interactions:
- * sneak-right-click always opens the creation GUI; right-click on an unbound
- * pledge binds it to the player's current faction; right-click on a bound
- * pledge joins its faction and consumes it. The {@link BaseFlagScreen}
- * class reference resolves lazily on the physical client only, so this stays
- * safe on dedicated servers.
+ * right-click on an unbound pledge binds it to the player's current faction;
+ * right-click on a bound pledge joins its faction and consumes it;
+ * sneak-right-click on a bound pledge clears the binding so it can be
+ * reused; right-clicking a villager issues a citizenship certificate;
+ * burning a pledge bound to your own faction renounces it.
  */
 public class FactionPledgeItem extends Item {
     public FactionPledgeItem(Properties properties) {
@@ -37,9 +36,11 @@ public class FactionPledgeItem extends Item {
         String boundFaction = stack.get(BaseBuster.FACTION.get());
 
         if (player.isShiftKeyDown()) {
-            // Sneak-right-click: always the faction-creation GUI
-            if (level.isClientSide) {
-                Minecraft.getInstance().setScreen(new BaseFlagScreen());
+            // Sneak-right-click: tear up the old oath -- the pledge becomes
+            // unbound and reusable (joining still consumes it, so this is the
+            // only way to strip a mistaken binding)
+            if (!level.isClientSide && boundFaction != null) {
+                stack.remove(BaseBuster.FACTION.get());
             }
         } else if (boundFaction != null) {
             if (!level.isClientSide) {
@@ -114,12 +115,14 @@ public class FactionPledgeItem extends Item {
                         Component.translatable("item.basebuster.faction_pledge.bound_hint_adopt"));
             }
             tooltipComponents.add(
-                    Component.translatable("item.basebuster.faction_pledge.bound_hint_create"));
+                    Component.translatable("item.basebuster.faction_pledge.hint_villager"));
+            tooltipComponents.add(
+                    Component.translatable("item.basebuster.faction_pledge.bound_hint_clear"));
         } else {
             tooltipComponents.add(
                     Component.translatable("item.basebuster.faction_pledge.unbound_hint_bind"));
             tooltipComponents.add(
-                    Component.translatable("item.basebuster.faction_pledge.unbound_hint_create"));
+                    Component.translatable("item.basebuster.faction_pledge.hint_villager"));
         }
     }
 }

@@ -29,8 +29,12 @@ public class BaseBusterItemModelProvider extends ItemModelProvider {
         withExistingParent(BaseBuster.RAIDER_RAVAGER_BOSS_SPAWN_EGG.getId().toString(), mcLoc("item/template_spawn_egg"));
         // Test tool disguised as rotten flesh
         withExistingParent(BaseBuster.RAID_SPAWNER.getId().toString(), mcLoc("item/rotten_flesh"));
+        // A signed charter reads as a written book
+        withExistingParent(BaseBuster.FACTION_FOUNDING_DOCUMENT.getId().toString(), mcLoc("item/written_book"));
         // Looks like regular paper for now
         withExistingParent(BaseBuster.FACTION_PLEDGE.getId().toString(), mcLoc("item/paper"));
+        // A certificate reads as a book-and-quill to tell it from the pledge
+        withExistingParent(BaseBuster.CITIZENSHIP_CERTIFICATE.getId().toString(), mcLoc("item/writable_book"));
         // Banner items render through BlockEntityWithoutLevelRenderer; vanilla's
         // template_banner wraps builtin/entity with the display transforms that
         // keep the model inside inventory slots and hands

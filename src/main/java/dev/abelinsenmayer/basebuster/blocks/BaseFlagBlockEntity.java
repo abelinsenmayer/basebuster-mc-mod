@@ -15,7 +15,10 @@ import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.MinecraftServer;
@@ -132,6 +135,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     // Ticks until a pending raid spawns; 0 means no raid is incoming
     private int raidCountdownTicks = 0;
+
+    // UUIDs of the villagers settled here with citizenship certificates.
+    // Persisted; roster bookkeeping only -- the entities themselves join
+    // the owning scoreboard team directly when they're released
+    private final List<UUID> citizens = new ArrayList<>();
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         // BannerBlockEntity hardcodes the vanilla BANNER type internally; we
@@ -301,7 +309,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         Component name = getCustomName();
         return Component.literal(
                 (name != null ? "Name: " + name.getString() + "\n" : "")
-                        + "Owner: " + ownerDisplay + "\nLevel: " + baseLevel + "\nRepairs needed: " + repairTargets.size());
+                        + "Owner: " + ownerDisplay + "\nLevel: " + baseLevel
+                        + "\nRepairs needed: " + repairTargets.size()
+                        + "\nCitizens: " + citizens.size());
     }
 
     public int getBaseLevel() {
@@ -407,6 +417,23 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         } else {
             FlagBoundaryDebugState.remove(getBlockPos());
         }
+    }
+
+    /**
+     * Enrolls a villager released here by a citizenship certificate. The
+     * caller is responsible for {@code sendBlockUpdated} when clients need
+     * the roster change.
+     */
+    public void addCitizen(UUID citizenId) {
+        if (!this.citizens.contains(citizenId)) {
+            this.citizens.add(citizenId);
+            setChanged();
+        }
+    }
+
+    /** The UUIDs of every villager settled under this flag; unmodifiable. */
+    public List<UUID> getCitizens() {
+        return Collections.unmodifiableList(this.citizens);
     }
 
     /**
@@ -812,6 +839,14 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (tag.contains("raid_countdown_ticks")) {
             this.raidCountdownTicks = tag.getInt("raid_countdown_ticks");
         }
+        this.citizens.clear();
+        for (Tag citizenTag : tag.getList("citizens", Tag.TAG_STRING)) {
+            try {
+                this.citizens.add(UUID.fromString(citizenTag.getAsString()));
+            } catch (IllegalArgumentException e) {
+                // A malformed entry is dropped rather than failing the whole load
+            }
+        }
         if (tag.contains("repair_targets")) {
             CompoundTag repairTargetsTag = tag.getCompound("repair_targets");
             int count = tag.getInt("repair_targets_count");
@@ -842,6 +877,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
         if (this.raidCountdownTicks > 0) {
             tag.putInt("raid_countdown_ticks", this.raidCountdownTicks);
+        }
+        if (!this.citizens.isEmpty()) {
+            ListTag citizensTag = new ListTag();
+            for (UUID citizen : this.citizens) {
+                citizensTag.add(StringTag.valueOf(citizen.toString()));
+            }
+            tag.put("citizens", citizensTag);
         }
         if (!repairTargets.isEmpty()) {
             CompoundTag repairTargetsTag = new CompoundTag();

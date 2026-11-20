@@ -20,10 +20,12 @@ import net.minecraft.world.scores.Team;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * Sent from the faction pledge screen when the player clicks Create Faction.
- * The server validates the name, creates the scoreboard team, applies the
- * options that map to vanilla team properties, and replies with a
- * {@link CreateFactionResultPayload}.
+ * Sent from the faction founding screen when the player clicks Create
+ * Faction. The server validates the name, requires a
+ * {@link dev.abelinsenmayer.basebuster.items.FactionFoundingDocumentItem}
+ * in hand, creates the scoreboard team, applies the options that map to
+ * vanilla team properties, seats the founder on the new team, consumes
+ * the document, and replies with a {@link CreateFactionResultPayload}.
  */
 public record CreateFactionPayload(String name, int colorIndex, boolean allowFriendlyFire,
         boolean hideNametags, boolean showNamePrefix)
@@ -79,6 +81,14 @@ public record CreateFactionPayload(String name, int colorIndex, boolean allowFri
             return;
         }
 
+        // Founding a faction is chartered: it needs the document in hand
+        if (!player.getMainHandItem().is(BaseBuster.FACTION_FOUNDING_DOCUMENT.get())
+                && !player.getOffhandItem().is(BaseBuster.FACTION_FOUNDING_DOCUMENT.get())) {
+            context.reply(new CreateFactionResultPayload(false,
+                    Component.translatable("gui.basebuster.faction_pledge.no_document")));
+            return;
+        }
+
         PlayerTeam team = scoreboard.addPlayerTeam(name);
         team.setDisplayName(Component.literal(name));
         team.setColor(SELECTABLE_COLORS.get(payload.colorIndex()));
@@ -89,12 +99,14 @@ public record CreateFactionPayload(String name, int colorIndex, boolean allowFri
         if (payload.showNamePrefix()) {
             team.setPlayerPrefix(Component.literal("[" + name + "] "));
         }
-        // The creator is not joined automatically -- the pledge in hand
-        // becomes bound to the new faction so right-clicking it joins later
+        // Founding seats the creator on the new team (ejecting them from
+        // any previous one, like adopting a pledge does) and consumes the
+        // document that chartered it
+        scoreboard.addPlayerToTeam(player.getScoreboardName(), team);
         for (InteractionHand hand : InteractionHand.values()) {
             ItemStack held = player.getItemInHand(hand);
-            if (held.is(BaseBuster.FACTION_PLEDGE.get())) {
-                held.set(BaseBuster.FACTION.get(), name);
+            if (held.is(BaseBuster.FACTION_FOUNDING_DOCUMENT.get())) {
+                held.consume(1, player);
             }
         }
         player.sendSystemMessage(
