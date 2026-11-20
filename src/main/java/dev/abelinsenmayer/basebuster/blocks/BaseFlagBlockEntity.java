@@ -29,6 +29,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
@@ -42,6 +43,7 @@ import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Team;
 
@@ -49,11 +51,13 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
@@ -71,6 +75,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     private static final int RAID_WARNING_TICKS = 30 * 20;
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
+    // Ticks between scans cataloguing the villagers inside this flag's sphere (30 seconds)
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 1 * 20;  // ABE TODO set back to 30x20
+    // Consecutive scans a non-citizen must be seen in range before it's granted
+    // citizenship; the same count of missed scans revokes a citizen's status
+    private static final int CITIZENSHIP_SCANS = 4;
+    // Default name given to unnamed citizens; revocation strips only this one
+    private static final String DEFAULT_CITIZEN_NAME = "Villager";
 
     // The name of the scoreboard team that owns this flag; null while unowned.
     // Raider factions own flags through their faction teams (see
@@ -140,6 +151,15 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Persisted; roster bookkeeping only -- the entities themselves join
     // the owning scoreboard team directly when they're released
     private final List<UUID> citizens = new ArrayList<>();
+
+    // Ticks until the next villager citizenship scan
+    private int citizenScanCountdown = CITIZEN_SCAN_INTERVAL_TICKS;
+    // Citizen UUID -> consecutive scans it wasn't found inside the sphere.
+    // In-memory only; a flag reloading restarts the grace period
+    private final Map<UUID, Integer> citizenAbsences = new HashMap<>();
+    // Non-citizen UUID -> consecutive scans it was seen inside the sphere.
+    // In-memory only; a missed scan resets the count
+    private final Map<UUID, Integer> settlerSightings = new HashMap<>();
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         // BannerBlockEntity hardcodes the vanilla BANNER type internally; we
@@ -437,6 +457,146 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     /**
+     * Catalogues every villager inside this flag's protection sphere and
+     * reconciles the roster. A citizen missed for {@link #CITIZENSHIP_SCANS}
+     * consecutive scans (~2 minutes) loses citizenship and its team
+     * membership; a non-citizen seen for that many consecutive scans settles
+     * here, gaining citizenship exactly as a released certificate holder
+     * would. Only player-team-owned flags grant citizenship -- a faction's
+     * flag settles no one.
+     */
+    private void scanCitizens(ServerLevel serverLevel) {
+        BlockPos flagPos = getBlockPos();
+        int radius = getProtectionRadius();
+        double radiusSqr = (double) radius * radius;
+        // Same spherical boundary as grief protection, scanned on entities
+        List<Villager> villagers = serverLevel.getEntitiesOfClass(
+                Villager.class,
+                new AABB(flagPos).inflate(radius),
+                villager -> villager.isAlive()
+                        && villager.blockPosition().distSqr(flagPos) <= radiusSqr);
+        Set<UUID> inRangeIds = new HashSet<>();
+        for (Villager villager : villagers) {
+            inRangeIds.add(villager.getUUID());
+        }
+
+        boolean rosterChanged = false;
+        Iterator<UUID> citizenIterator = this.citizens.iterator();
+        while (citizenIterator.hasNext()) {
+            UUID citizenId = citizenIterator.next();
+            if (inRangeIds.contains(citizenId)) {
+                this.citizenAbsences.remove(citizenId);
+                continue;
+            }
+            if (this.citizenAbsences.merge(citizenId, 1, Integer::sum) >= CITIZENSHIP_SCANS) {
+                citizenIterator.remove();
+                this.citizenAbsences.remove(citizenId);
+                this.revokeCitizenship(citizenId, serverLevel);
+                rosterChanged = true;
+            }
+        }
+
+        if (this.isPlayerTeamOwned()) {
+            // Only consecutive sightings count; a prospect missed this scan
+            // starts over the next time it's seen
+            this.settlerSightings.keySet().retainAll(inRangeIds);
+            for (Villager villager : villagers) {
+                UUID villagerId = villager.getUUID();
+                if (this.citizens.contains(villagerId)) {
+                    continue;
+                }
+                if (this.settlerSightings.merge(villagerId, 1, Integer::sum) >= CITIZENSHIP_SCANS) {
+                    this.settlerSightings.remove(villagerId);
+                    this.grantCitizenship(villager, serverLevel);
+                    rosterChanged = true;
+                }
+            }
+        } else {
+            this.settlerSightings.clear();
+        }
+
+        if (rosterChanged) {
+            setChanged();
+            serverLevel.sendBlockUpdated(flagPos, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    /**
+     * Settles a villager the scan found lingering in range: roster entry,
+     * owning-team membership, and the same default "Villager" name a released
+     * certificate holder gets.
+     */
+    private void grantCitizenship(Villager villager, ServerLevel serverLevel) {
+        this.addCitizen(villager.getUUID());
+        PlayerTeam team = this.getOwnerTeam();
+        if (team != null) {
+            serverLevel.getScoreboard().addPlayerToTeam(villager.getScoreboardName(), team);
+        }
+        if (!villager.hasCustomName()) {
+            villager.setCustomName(Component.literal(DEFAULT_CITIZEN_NAME));
+        }
+        villager.setCustomNameVisible(true);
+    }
+
+    /**
+     * Revokes one citizen's status: removes its owning-team membership and,
+     * when the entity is still loaded in this level, strips the generic
+     * {@link #DEFAULT_CITIZEN_NAME} the base gave it. A custom name is kept
+     * -- someone named that villager on purpose.
+     */
+    private void revokeCitizenship(UUID citizenId, ServerLevel serverLevel) {
+        Entity citizen = serverLevel.getEntity(citizenId);
+        if (citizen != null && citizen.hasCustomName()
+                && DEFAULT_CITIZEN_NAME.equals(citizen.getCustomName().getString())) {
+            citizen.setCustomName(null);
+            citizen.setCustomNameVisible(false);
+        }
+        this.removeFromOwnerTeam(citizenId, serverLevel);
+    }
+
+    /**
+     * Removes a citizen's scoreboard-team membership. Works by entity
+     * scoreboard name (its UUID), so it applies even after the villager
+     * itself has died or unloaded.
+     */
+    private void removeFromOwnerTeam(UUID citizenId, ServerLevel serverLevel) {
+        PlayerTeam team = this.getOwnerTeam();
+        if (team == null) {
+            return;
+        }
+        String memberName = citizenId.toString();
+        // removePlayerFromTeam throws unless the member is still on this
+        // team; the scoreboard entry may already be gone or have moved to
+        // another team since the roster last updated
+        if (serverLevel.getScoreboard().getPlayersTeam(memberName) == team) {
+            serverLevel.getScoreboard().removePlayerFromTeam(memberName, team);
+        }
+    }
+
+    /**
+     * Dissolves the settlement: clears the citizen roster and revokes every
+     * member's team membership. Called while the flag still belongs to its
+     * outgoing owner -- when the flag is broken, captured, or otherwise
+     * changes hands.
+     */
+    public void revokeAllCitizens() {
+        if (this.citizens.isEmpty()
+                && this.citizenAbsences.isEmpty()
+                && this.settlerSightings.isEmpty()) {
+            return;
+        }
+        if (this.level instanceof ServerLevel serverLevel) {
+            for (UUID citizenId : this.citizens) {
+                this.revokeCitizenship(citizenId, serverLevel);
+            }
+        }
+        this.citizens.clear();
+        this.citizenAbsences.clear();
+        this.settlerSightings.clear();
+        setChanged();
+    }
+
+    /**
      * Recomputes this flag's base level by counting victory banners (standing and
      * wall-mounted) inside {@link BaseFlagBlock#MAX_PROTECTION_RADIUS}. Banners
      * are always counted at the largest radius so the level doesn't depend on the
@@ -508,6 +668,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     public static void tick(Level level, BlockPos pos, BlockState state, BaseFlagBlockEntity blockEntity) {
         if (!(level instanceof ServerLevel serverLevel)) {
             return;
+        }
+
+        // Citizenship bookkeeping runs on its own slow cadence, independent
+        // of whether a raid countdown is in progress
+        if (--blockEntity.citizenScanCountdown <= 0) {
+            blockEntity.citizenScanCountdown = CITIZEN_SCAN_INTERVAL_TICKS;
+            blockEntity.scanCitizens(serverLevel);
         }
 
         if (blockEntity.raidCountdownTicks > 0) {
@@ -1013,6 +1180,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * stamped on one of its flags, if any.
      */
     public void setOwnerTeam(Team team) {
+        // Citizens settled under the outgoing owner; a flag changing hands
+        // revokes their citizenship before the new team takes over
+        if (!team.getName().equals(this.ownerTeamName)) {
+            this.revokeAllCitizens();
+        }
         this.ownerTeamName = team.getName();
         this.legacyOwnerName = null;
         this.legacyOwnerUuid = null;
@@ -1207,6 +1379,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         // A captured flag can no longer repair its surroundings; drop them like
         // a flag broken by a player, but with no player to credit
         this.abandonRepairs(null);
+        // The settlement falls with the flag: revoke citizenship while the
+        // outgoing owner's team is still on record
+        this.revokeAllCitizens();
 
         // Ownership passes to the raider faction's own scoreboard team
         this.ownerTeamName = faction.name();

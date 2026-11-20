@@ -430,12 +430,18 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
 
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        // Fetch the block entity before super deregisters it: a broken flag
+        // dissolves its settlement, revoking every citizen's team membership
+        BlockEntity blockEntity = level.getBlockEntity(pos);
         super.onRemove(state, level, pos, newState, movedByPiston);
 
         if (level.isClientSide) {
             return;
         }
 
+        if (blockEntity instanceof BaseFlagBlockEntity flagEntity) {
+            flagEntity.revokeAllCitizens();
+        }
         ServerLevel serverLevel = (ServerLevel) level;
         FlagsSavedData flagsSavedData = FlagsSavedData.getFromLevel(serverLevel);
         flagsSavedData.removeFlagLocation(pos);
