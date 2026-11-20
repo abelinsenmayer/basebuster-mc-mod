@@ -208,9 +208,7 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                         team.getColor(),
                         team.isAllowFriendlyFire(),
                         team.getNameTagVisibility() != Team.Visibility.ALWAYS,
-                        !team.getPlayerPrefix().getString().isEmpty(),
-                        // No team backing exists yet for uninvited joins
-                        false)));
+                        !team.getPlayerPrefix().getString().isEmpty())));
     }
 
     @Override

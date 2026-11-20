@@ -51,7 +51,6 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.faction_pledge.friendly_fire", "Allow friendly fire?");
         this.add("gui.basebuster.faction_pledge.hide_nametags", "Hide nametags from non-members?");
         this.add("gui.basebuster.faction_pledge.show_prefix", "Show faction name prefix?");
-        this.add("gui.basebuster.faction_pledge.allow_uninvited", "Allow uninvited members to join at your flag?");
         this.add("gui.basebuster.faction_pledge.create", "Create Faction");
         this.add("gui.basebuster.faction_pledge.edit_title", "Faction Settings");
         this.add("gui.basebuster.faction_pledge.save", "Save");

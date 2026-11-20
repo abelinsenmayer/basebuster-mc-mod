@@ -33,9 +33,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public class FactionPledgeScreen extends Screen {
     /** A faction's current settings, used to prefill the screen in edit mode. */
     public record Prefill(String name, ChatFormatting color, boolean allowFriendlyFire,
-            boolean hideNametags, boolean showNamePrefix, boolean allowUninvited) {}
+            boolean hideNametags, boolean showNamePrefix) {}
     private static final int PANEL_WIDTH = 292;
-    private static final int PANEL_HEIGHT = 226;
+    private static final int PANEL_HEIGHT = 202;
     private static final int PANEL_FILL = 0xFFC6C6C6;
     private static final int PANEL_EDGE_LIGHT = 0xFFFFFFFF;
     private static final int PANEL_EDGE_DARK = 0xFF555555;
@@ -127,9 +127,9 @@ public class FactionPledgeScreen extends Screen {
         // answered and don't gate Create Faction
         boolean[] preChecked = this.prefill != null
                 ? new boolean[]{this.prefill.allowFriendlyFire(), this.prefill.hideNametags(),
-                        this.prefill.showNamePrefix(), this.prefill.allowUninvited()}
-                : new boolean[4];
-        String[] optionKeys = {"friendly_fire", "hide_nametags", "show_prefix", "allow_uninvited"};
+                        this.prefill.showNamePrefix()}
+                : new boolean[3];
+        String[] optionKeys = {"friendly_fire", "hide_nametags", "show_prefix"};
         int rowY = this.panelTop + 88;
         for (int i = 0; i < optionKeys.length; i++) {
             Checkbox checkbox = Checkbox.builder(
@@ -148,7 +148,7 @@ public class FactionPledgeScreen extends Screen {
                                 ? "gui.basebuster.faction_pledge.save"
                                 : "gui.basebuster.faction_pledge.create"),
                         button -> this.submit())
-                .bounds(this.width / 2 - 60, this.panelTop + 196, 120, 20)
+                .bounds(this.width / 2 - 60, this.panelTop + 172, 120, 20)
                 .build());
         this.updateCreateState();
     }
@@ -191,15 +191,14 @@ public class FactionPledgeScreen extends Screen {
         boolean allowFriendlyFire = this.optionCheckboxes.get(0).selected();
         boolean hideNametags = this.optionCheckboxes.get(1).selected();
         boolean showNamePrefix = this.optionCheckboxes.get(2).selected();
-        boolean allowUninvited = this.optionCheckboxes.get(3).selected();
         if (this.flagPos != null) {
             PacketDistributor.sendToServer(new EditFactionPayload(
                     this.flagPos, this.selectedColorIndex,
-                    allowFriendlyFire, hideNametags, showNamePrefix, allowUninvited));
+                    allowFriendlyFire, hideNametags, showNamePrefix));
         } else {
             PacketDistributor.sendToServer(new CreateFactionPayload(
                     nameValue().trim(), this.selectedColorIndex,
-                    allowFriendlyFire, hideNametags, showNamePrefix, allowUninvited));
+                    allowFriendlyFire, hideNametags, showNamePrefix));
         }
     }
 
@@ -238,7 +237,7 @@ public class FactionPledgeScreen extends Screen {
 
         if (this.errorMessage != null) {
             graphics.drawCenteredString(this.font, this.errorMessage.copy().withStyle(ChatFormatting.RED),
-                    this.width / 2, this.panelTop + 182, ERROR_COLOR);
+                    this.width / 2, this.panelTop + 158, ERROR_COLOR);
         }
     }
 

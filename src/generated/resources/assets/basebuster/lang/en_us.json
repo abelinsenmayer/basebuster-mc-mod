@@ -16,7 +16,6 @@
   "entity.basebuster.raider_ravager_boss": "Ravager Raider Boss",
   "entity.basebuster.raider_vindicator": "Vindicator Raider",
   "gui.basebuster.faction_pledge": "Faction Pledge",
-  "gui.basebuster.faction_pledge.allow_uninvited": "Allow uninvited members?",
   "gui.basebuster.faction_pledge.create": "Create Faction",
   "gui.basebuster.faction_pledge.created": "Faction '%s' created!",
   "gui.basebuster.faction_pledge.edit_title": "Faction Settings",

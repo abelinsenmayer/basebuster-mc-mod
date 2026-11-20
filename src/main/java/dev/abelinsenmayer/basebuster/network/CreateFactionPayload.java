@@ -24,13 +24,9 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * The server validates the name, creates the scoreboard team, applies the
  * options that map to vanilla team properties, and replies with a
  * {@link CreateFactionResultPayload}.
- *
- * <p>{@link #allowUninvited} has no vanilla team backing (invites are not a
- * scoreboard concept); it rides along now so the packet format is stable when
- * faction membership data lands later.
  */
 public record CreateFactionPayload(String name, int colorIndex, boolean allowFriendlyFire,
-        boolean hideNametags, boolean showNamePrefix, boolean allowUninvited)
+        boolean hideNametags, boolean showNamePrefix)
         implements CustomPacketPayload {
 
     // Vanilla imposes no team-name length limit in this version; the GUI caps at 50
@@ -46,7 +42,6 @@ public record CreateFactionPayload(String name, int colorIndex, boolean allowFri
                     ByteBufCodecs.BOOL, CreateFactionPayload::allowFriendlyFire,
                     ByteBufCodecs.BOOL, CreateFactionPayload::hideNametags,
                     ByteBufCodecs.BOOL, CreateFactionPayload::showNamePrefix,
-                    ByteBufCodecs.BOOL, CreateFactionPayload::allowUninvited,
                     CreateFactionPayload::new);
 
     // Team colors are ChatFormatting; its 16 color formattings are exactly

@@ -25,24 +25,20 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * renamed), so the payload carries no name: the flag's owning team is the
  * authority. The screen gets a {@link CreateFactionResultPayload} either
  * way, and every online member of the team is told who saved.
- *
- * <p>{@link Options#allowUninvited} has no vanilla team backing yet; it rides
- * along to keep the packet format stable, as in {@link CreateFactionPayload}.
  */
 public record EditFactionPayload(BlockPos flagPos, Options options)
         implements CustomPacketPayload {
 
-    // StreamCodec.composite tops out at six fields, so the five team settings
+    // StreamCodec.composite tops out at six fields, so the four team settings
     // ride inside a nested record
     public record Options(int colorIndex, boolean allowFriendlyFire, boolean hideNametags,
-            boolean showNamePrefix, boolean allowUninvited) {
+            boolean showNamePrefix) {
         public static final StreamCodec<RegistryFriendlyByteBuf, Options> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.VAR_INT, Options::colorIndex,
                         ByteBufCodecs.BOOL, Options::allowFriendlyFire,
                         ByteBufCodecs.BOOL, Options::hideNametags,
                         ByteBufCodecs.BOOL, Options::showNamePrefix,
-                        ByteBufCodecs.BOOL, Options::allowUninvited,
                         Options::new);
     }
 
@@ -57,10 +53,9 @@ public record EditFactionPayload(BlockPos flagPos, Options options)
 
     /** Convenience constructor taking the settings flat, matching the screen's field order. */
     public EditFactionPayload(BlockPos flagPos, int colorIndex,
-            boolean allowFriendlyFire, boolean hideNametags, boolean showNamePrefix,
-            boolean allowUninvited) {
+            boolean allowFriendlyFire, boolean hideNametags, boolean showNamePrefix) {
         this(flagPos, new Options(colorIndex, allowFriendlyFire,
-                hideNametags, showNamePrefix, allowUninvited));
+                hideNametags, showNamePrefix));
     }
 
     @Override
