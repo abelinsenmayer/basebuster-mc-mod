@@ -17,7 +17,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
@@ -92,7 +91,7 @@ public class CitizenshipCertificateItem extends Item {
             return InteractionResult.SUCCESS;
         }
 
-        Entity citizen = EntityType.VILLAGER.create(serverLevel);
+        Villager citizen = EntityType.VILLAGER.create(serverLevel);
         if (citizen == null) {
             return InteractionResult.FAIL;
         }
@@ -106,14 +105,16 @@ public class CitizenshipCertificateItem extends Item {
         citizen.setCustomNameVisible(true);
         serverLevel.addFreshEntity(citizen);
 
-        flagEntity.addCitizen(citizen.getUUID());
+        flagEntity.addCitizen(citizen);
         PlayerTeam team = flagEntity.getOwnerTeam();
         if (team != null) {
             serverLevel.getScoreboard().addPlayerToTeam(citizen.getScoreboardName(), team);
         }
         serverLevel.sendBlockUpdated(flagEntity.getBlockPos(), flagEntity.getBlockState(), flagEntity.getBlockState(), 3);
 
-        stack.consume(1, player);
+        // Not consume(): the certificate is spent even for Creative players,
+        // so a stored villager can't be duplicated.
+        stack.shrink(1);
         player.displayClientMessage(
                 Component.translatable("item.basebuster.citizenship_certificate.placed",
                         citizen.getDisplayName(),

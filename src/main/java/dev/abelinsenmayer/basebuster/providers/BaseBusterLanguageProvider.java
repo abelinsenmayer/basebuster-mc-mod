@@ -72,6 +72,7 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.base_management.not_member", "Only the flag's owning team can edit its base.");
         this.add("gui.basebuster.base_management.name_taken", "Your team already has a base named '%s'.");
         this.add("gui.basebuster.base_management.name_invalid", "Invalid base name.");
+        this.add("gui.basebuster.base_management.banish", "Banish");
         this.add("gui.basebuster.repairs.title", "Repairs");
         this.add("gui.basebuster.repairs.column_block", "Block");
         this.add("gui.basebuster.repairs.column_location", "Location");

@@ -3,6 +3,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 import com.mojang.authlib.GameProfile;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
+import dev.abelinsenmayer.basebuster.items.CitizenshipCertificateItem;
 import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
@@ -13,14 +14,15 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
-import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -147,10 +149,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Ticks until a pending raid spawns; 0 means no raid is incoming
     private int raidCountdownTicks = 0;
 
-    // UUIDs of the villagers settled here with citizenship certificates.
-    // Persisted; roster bookkeeping only -- the entities themselves join
+    // The villagers settled here with citizenship certificates. Persisted
+    // and synced like repairTargets so the flag GUI can list names and
+    // professions; roster bookkeeping only -- the entities themselves join
     // the owning scoreboard team directly when they're released
-    private final List<UUID> citizens = new ArrayList<>();
+    private final List<Citizen> citizens = new ArrayList<>();
 
     // Ticks until the next villager citizenship scan
     private int citizenScanCountdown = CITIZEN_SCAN_INTERVAL_TICKS;
@@ -444,16 +447,54 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * caller is responsible for {@code sendBlockUpdated} when clients need
      * the roster change.
      */
-    public void addCitizen(UUID citizenId) {
-        if (!this.citizens.contains(citizenId)) {
-            this.citizens.add(citizenId);
-            setChanged();
+    public void addCitizen(Villager villager) {
+        if (isCitizen(villager.getUUID())) {
+            return;
         }
+        Component customName = villager.getCustomName();
+        this.citizens.add(new Citizen(
+                villager.getUUID(),
+                customName != null ? customName.getString() : DEFAULT_CITIZEN_NAME,
+                BuiltInRegistries.VILLAGER_PROFESSION.getKey(
+                        villager.getVillagerData().getProfession())));
+        setChanged();
     }
 
-    /** The UUIDs of every villager settled under this flag; unmodifiable. */
-    public List<UUID> getCitizens() {
+    /** Whether {@code citizenId} is on this flag's citizen roster. */
+    public boolean isCitizen(UUID citizenId) {
+        return this.citizens.stream().anyMatch(citizen -> citizen.id().equals(citizenId));
+    }
+
+    /** The villagers settled under this flag; unmodifiable. */
+    public List<Citizen> getCitizens() {
         return Collections.unmodifiableList(this.citizens);
+    }
+
+    /**
+     * Banishes one citizen: drops a {@link CitizenshipCertificateItem}
+     * holding the villager above the flag, removes the villager from the
+     * world, and revokes its roster entry and team membership. When the
+     * entity isn't loaded the citizen is still stricken from the roster but
+     * no certificate is produced -- there's no NBT to pack into one.
+     * The caller is responsible for {@code sendBlockUpdated} when clients
+     * need the roster change.
+     */
+    public void banishCitizen(UUID citizenId, @Nullable Player player) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        if (!isCitizen(citizenId)) {
+            return;
+        }
+        this.citizens.removeIf(citizen -> citizen.id().equals(citizenId));
+        this.citizenAbsences.remove(citizenId);
+        this.removeFromOwnerTeam(citizenId, serverLevel);
+        if (serverLevel.getEntity(citizenId) instanceof Villager villager) {
+            ItemStack certificate = CitizenshipCertificateItem.capture(villager);
+            villager.discard();
+            Block.popResource(serverLevel, getBlockPos().above(), certificate);
+        }
+        setChanged();
     }
 
     /**
@@ -481,9 +522,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
 
         boolean rosterChanged = false;
-        Iterator<UUID> citizenIterator = this.citizens.iterator();
+        Iterator<Citizen> citizenIterator = this.citizens.iterator();
         while (citizenIterator.hasNext()) {
-            UUID citizenId = citizenIterator.next();
+            UUID citizenId = citizenIterator.next().id();
             if (inRangeIds.contains(citizenId)) {
                 this.citizenAbsences.remove(citizenId);
                 continue;
@@ -502,7 +543,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             this.settlerSightings.keySet().retainAll(inRangeIds);
             for (Villager villager : villagers) {
                 UUID villagerId = villager.getUUID();
-                if (this.citizens.contains(villagerId)) {
+                if (isCitizen(villagerId)) {
                     continue;
                 }
                 if (this.settlerSightings.merge(villagerId, 1, Integer::sum) >= CITIZENSHIP_SCANS) {
@@ -527,15 +568,17 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * certificate holder gets.
      */
     private void grantCitizenship(Villager villager, ServerLevel serverLevel) {
-        this.addCitizen(villager.getUUID());
-        PlayerTeam team = this.getOwnerTeam();
-        if (team != null) {
-            serverLevel.getScoreboard().addPlayerToTeam(villager.getScoreboardName(), team);
-        }
         if (!villager.hasCustomName()) {
             villager.setCustomName(Component.literal(DEFAULT_CITIZEN_NAME));
         }
         villager.setCustomNameVisible(true);
+        // Named before enrolling so the roster stores the name the
+        // villager will actually display
+        this.addCitizen(villager);
+        PlayerTeam team = this.getOwnerTeam();
+        if (team != null) {
+            serverLevel.getScoreboard().addPlayerToTeam(villager.getScoreboardName(), team);
+        }
     }
 
     /**
@@ -586,8 +629,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return;
         }
         if (this.level instanceof ServerLevel serverLevel) {
-            for (UUID citizenId : this.citizens) {
-                this.revokeCitizenship(citizenId, serverLevel);
+            for (Citizen citizen : this.citizens) {
+                this.revokeCitizenship(citizen.id(), serverLevel);
             }
         }
         this.citizens.clear();
@@ -1007,9 +1050,18 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             this.raidCountdownTicks = tag.getInt("raid_countdown_ticks");
         }
         this.citizens.clear();
+        for (Tag citizenTag : tag.getList("citizens", Tag.TAG_COMPOUND)) {
+            Citizen citizen = Citizen.deserialize((CompoundTag) citizenTag);
+            if (citizen != null) {
+                this.citizens.add(citizen);
+            }
+        }
+        // Legacy saves stored bare UUID strings; keep them on the roster
         for (Tag citizenTag : tag.getList("citizens", Tag.TAG_STRING)) {
             try {
-                this.citizens.add(UUID.fromString(citizenTag.getAsString()));
+                this.citizens.add(new Citizen(UUID.fromString(citizenTag.getAsString()),
+                        DEFAULT_CITIZEN_NAME,
+                        ResourceLocation.withDefaultNamespace("none")));
             } catch (IllegalArgumentException e) {
                 // A malformed entry is dropped rather than failing the whole load
             }
@@ -1047,8 +1099,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         }
         if (!this.citizens.isEmpty()) {
             ListTag citizensTag = new ListTag();
-            for (UUID citizen : this.citizens) {
-                citizensTag.add(StringTag.valueOf(citizen.toString()));
+            for (Citizen citizen : this.citizens) {
+                citizensTag.add(citizen.serialize());
             }
             tag.put("citizens", citizensTag);
         }
@@ -1425,6 +1477,35 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     @Override
     public ClientboundBlockEntityDataPacket getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    /**
+     * One settled villager as the flag's roster and the client GUI know it:
+     * the entity's UUID, its displayed name, and its profession's registry
+     * id (e.g. {@code minecraft:librarian}; {@code minecraft:none} while
+     * unprofessioned).
+     */
+    public record Citizen(UUID id, String name, ResourceLocation profession) {
+        public CompoundTag serialize() {
+            CompoundTag tag = new CompoundTag();
+            tag.putUUID("id", this.id);
+            tag.putString("name", this.name);
+            tag.putString("profession", this.profession.toString());
+            return tag;
+        }
+
+        @Nullable
+        public static Citizen deserialize(CompoundTag tag) {
+            if (!tag.contains("id") || !tag.contains("name")) {
+                return null;
+            }
+            ResourceLocation profession = ResourceLocation.tryParse(
+                    tag.getString("profession"));
+            return new Citizen(tag.getUUID("id"), tag.getString("name"),
+                    profession != null
+                            ? profession
+                            : ResourceLocation.withDefaultNamespace("none"));
+        }
     }
 
     public record RepairTarget(BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity) {

@@ -40,6 +40,7 @@
   "gui.basebuster.base_management.not_member": "Only the flag's owning team can edit its base.",
   "gui.basebuster.base_management.name_taken": "Your team already has a base named '%s'.",
   "gui.basebuster.base_management.name_invalid": "Invalid base name.",
+  "gui.basebuster.base_management.banish": "Banish",
   "gui.basebuster.repairs.title": "Repairs",
   "gui.basebuster.repairs.column_block": "Block",
   "gui.basebuster.repairs.column_location": "Location",

@@ -2,6 +2,7 @@ package dev.abelinsenmayer.basebuster.client;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
+import dev.abelinsenmayer.basebuster.network.BanishCitizenPayload;
 import dev.abelinsenmayer.basebuster.network.CreateFactionPayload;
 import dev.abelinsenmayer.basebuster.network.CreateFactionResultPayload;
 import dev.abelinsenmayer.basebuster.network.EditBasePayload;
@@ -12,8 +13,8 @@ import java.util.List;
 import javax.annotation.Nullable;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractScrollWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.ContainerObjectSelectionList;
@@ -24,7 +25,11 @@ import net.minecraft.client.gui.narration.NarratableEntry;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -42,8 +47,11 @@ import net.neoforged.neoforge.network.PacketDistributor;
  *   can't be renamed), the bottom button reads Save, and the submission
  *   rides {@link EditFactionPayload}.
  *   <li><b>Base</b> (an emerald): flag-specific settings -- the base name,
- *   border visibility, its level, and (eventually) its citizens. Submits via
- *   {@link EditBasePayload}; the server enforces unique base names per team.
+ *   border visibility, its level, and a scrollable roster of its citizens.
+ *   Each citizen row shows a miniature villager, its name and profession,
+ *   and a Banish button that ejects it as a citizenship certificate via
+ *   {@link BanishCitizenPayload}. The rest submits via {@link EditBasePayload};
+ *   the server enforces unique base names per team.
  *   <li><b>Repairs</b> (an iron repair hammer): the flag's saved repair
  *   targets in a scrollable list under pinned column headers. Each row shows
  *   the destroyed block's item icon, its coordinates, the icon of whatever
@@ -401,6 +409,9 @@ public class BaseFlagScreen extends Screen {
         boolean hasRepairs = !flagEntity.getRepairTargets().isEmpty();
         this.repairAllButton.active = hasRepairs;
         this.abandonAllButton.active = hasRepairs;
+        if (this.citizenList != null) {
+            this.citizenList.refresh(flagEntity.getCitizens());
+        }
     }
 
     private void selectColor(int colorIndex, ColorSwatch swatch) {
@@ -593,6 +604,8 @@ public class BaseFlagScreen extends Screen {
 
     private static final int ROW_HEIGHT = 24;
     private static final int ROW_BUTTON_WIDTH = 58;
+    // Citizen rows are taller: the miniature villager needs the room
+    private static final int CITIZEN_ROW_HEIGHT = 32;
 
     /**
      * The scrollable list of the flag's saved repairs. The pinned headers sit
@@ -722,32 +735,142 @@ public class BaseFlagScreen extends Screen {
     }
 
     /**
-     * The scrollable area that will hold citizen info. Empty for now -- it
-     * draws only its frame via {@link AbstractScrollWidget}.
+     * The scrollable citizen roster. Rows are rebuilt only when the synced
+     * roster changes so a rebuild mid-scroll doesn't lose position.
      */
-    private static class CitizenList extends AbstractScrollWidget {
+    private class CitizenList extends ContainerObjectSelectionList<CitizenEntry> {
         CitizenList(int x, int y, int width, int height) {
-            super(x, y, width, height, Component.empty());
+            super(BaseFlagScreen.this.minecraft, width, height, y, CITIZEN_ROW_HEIGHT);
+            this.setX(x);
+        }
+
+        void refresh(List<BaseFlagBlockEntity.Citizen> citizens) {
+            boolean same = children().size() == citizens.size();
+            for (int i = 0; same && i < citizens.size(); i++) {
+                same = children().get(i).citizen.equals(citizens.get(i));
+            }
+            if (same) {
+                return;
+            }
+            double scroll = getScrollAmount();
+            clearEntries();
+            for (BaseFlagBlockEntity.Citizen citizen : citizens) {
+                addEntry(new CitizenEntry(citizen));
+            }
+            setScrollAmount(scroll);
+        }
+
+        // Vanilla caps entries at 220px and centers them; use the full list
+        // width instead, leaving room for the scrollbar on the right
+        @Override
+        public int getRowWidth() {
+            return this.width - 10;
+        }
+
+        // The panel supplies the list's background; suppress the vanilla dark
+        // texture and separator lines so rows sit on the panel's fill
+        @Override
+        protected void renderListBackground(GuiGraphics graphics) {}
+
+        @Override
+        protected void renderListSeparators(GuiGraphics graphics) {}
+    }
+
+    /**
+     * One citizen row: a miniature rendering of the villager (dressed for
+     * the roster's recorded profession), its name and profession, and a
+     * Banish button that ejects the villager as a citizenship certificate
+     * dropped at the flag.
+     */
+    private class CitizenEntry extends ContainerObjectSelectionList.Entry<CitizenEntry> {
+        private final BaseFlagBlockEntity.Citizen citizen;
+        private final Button banishButton;
+        @Nullable
+        private Villager displayVillager;
+
+        CitizenEntry(BaseFlagBlockEntity.Citizen citizen) {
+            this.citizen = citizen;
+            this.banishButton = Button.builder(
+                            Component.translatable("gui.basebuster.base_management.banish"),
+                            button -> PacketDistributor.sendToServer(new BanishCitizenPayload(
+                                    flagPos, citizen.id())))
+                    .size(ROW_BUTTON_WIDTH, 20)
+                    .build();
+        }
+
+        /**
+         * A display-only villager standing in for the (possibly unloaded or
+         * far-away) citizen, dressed in its recorded profession. Built once
+         * per row like the repair list's obstruction snapshot.
+         */
+        @Nullable
+        private Villager displayVillager() {
+            if (this.displayVillager == null) {
+                if (BaseFlagScreen.this.minecraft == null
+                        || BaseFlagScreen.this.minecraft.level == null) {
+                    return null;
+                }
+                Villager villager = EntityType.VILLAGER.create(BaseFlagScreen.this.minecraft.level);
+                if (villager == null) {
+                    return null;
+                }
+                VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION
+                        .get(this.citizen.profession());
+                if (profession != null) {
+                    villager.setVillagerData(villager.getVillagerData().setProfession(profession));
+                }
+                this.displayVillager = villager;
+            }
+            return this.displayVillager;
         }
 
         @Override
-        protected int getInnerHeight() {
-            return 0;
+        public void render(GuiGraphics graphics, int index, int top, int left, int width, int height,
+                int mouseX, int mouseY, boolean hovered, float partialTick) {
+            // Row panel, inset so it reads as a card inside the list
+            graphics.fill(left + 2, top, left + width - 2, top + height - 2,
+                    hovered ? PANEL_FILL : PANEL_FILL_DIM);
+            graphics.renderOutline(left + 2, top, width - 4, height - 2, PANEL_EDGE_DARK);
+
+            Villager villager = this.displayVillager();
+            if (villager != null) {
+                // The inventory-style renderer, shrunk into a slot beside the text
+                InventoryScreen.renderEntityInInventoryFollowsMouse(graphics,
+                        left + 4, top, left + 30, top + height - 2,
+                        14, 0.0625F, mouseX, mouseY, villager);
+            }
+
+            int textY = top + (height - 2 - 9) / 2;
+            int textX = left + 36;
+            int textRight = left + width - 4 - ROW_BUTTON_WIDTH - 8;
+            String name = font.plainSubstrByWidth(this.citizen.name(), textRight - textX);
+            graphics.drawString(font, name, textX, textY, LABEL_COLOR, false);
+            if (!"none".equals(this.citizen.profession().getPath())) {
+                Component profession = Component.translatable(
+                        "entity." + this.citizen.profession().getNamespace()
+                                + ".villager." + this.citizen.profession().getPath());
+                int professionX = textX + font.width(name) + 6;
+                int maxProfessionWidth = textRight - professionX;
+                if (maxProfessionWidth > 0) {
+                    graphics.drawString(font,
+                            font.plainSubstrByWidth(profession.getString(), maxProfessionWidth),
+                            professionX, textY, 0xFF787878, false);
+                }
+            }
+
+            this.banishButton.setX(left + width - 4 - ROW_BUTTON_WIDTH);
+            this.banishButton.setY(top + (height - 2 - 20) / 2 + 1);
+            this.banishButton.render(graphics, mouseX, mouseY, partialTick);
         }
 
         @Override
-        protected double scrollRate() {
-            return 9.0;
+        public List<? extends GuiEventListener> children() {
+            return List.of(this.banishButton);
         }
 
         @Override
-        protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            // No citizen info yet
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput output) {
-            defaultButtonNarrationText(output);
+        public List<? extends NarratableEntry> narratables() {
+            return List.of(this.banishButton);
         }
     }
 
