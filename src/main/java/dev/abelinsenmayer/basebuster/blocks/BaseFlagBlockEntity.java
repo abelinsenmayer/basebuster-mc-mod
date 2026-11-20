@@ -168,15 +168,70 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     }
 
     /**
-     * Renames this flag, e.g. when a player uses a named name tag on it.
+     * Renames this flag; the base management GUI is the only caller.
      * {@code BannerBlockEntity} stores its name only in the implicit component
      * data (it exposes no setter), so this goes through the same component
-     * machinery that applies anvil-named items on placement.
+     * machinery that applies named items on placement.
      */
     public void setFlagName(Component name) {
         applyComponents(
                 DataComponentMap.EMPTY,
                 DataComponentPatch.builder().set(DataComponents.CUSTOM_NAME, name).build());
+        setChanged();
+        syncSavedFlagInfo();
+    }
+
+    /**
+     * Assigns this flag the next free "Base N" name for its owning team,
+     * overwriting whatever name it had -- including names carried in by
+     * anvil-named flag items, which the base management GUI now owns.
+     */
+    private void assignNextBaseName() {
+        if (!(this.level instanceof ServerLevel serverLevel)
+                || serverLevel.getServer() == null
+                || this.ownerTeamName == null) {
+            return;
+        }
+        setFlagName(Component.literal(FlagsSavedData.nextBaseName(
+                serverLevel.getServer(), this.ownerTeamName,
+                serverLevel, getBlockPos())));
+    }
+
+    /**
+     * Keeps the "each base has a unique name within its team" invariant for
+     * player-team-owned flags: a missing or colliding name is replaced by the
+     * next free "Base N". Called when ownership lands on a player team and
+     * when a flag is (re)loaded so pre-GUI names migrate.
+     */
+    private void ensureOwnedBaseName() {
+        if (!(this.level instanceof ServerLevel serverLevel)
+                || serverLevel.getServer() == null
+                || this.ownerTeamName == null
+                || this.ownerFaction() != null) {
+            return;
+        }
+        Component customName = getCustomName();
+        String current = customName != null ? customName.getString() : null;
+        if (current == null || FlagsSavedData.isBaseNameTaken(
+                serverLevel.getServer(), this.ownerTeamName, current,
+                serverLevel, getBlockPos())) {
+            assignNextBaseName();
+        }
+    }
+
+    /**
+     * Mirrors this flag's owner and base name into the level's
+     * {@link FlagsSavedData} so names stay known -- and unique per team --
+     * while the flag's chunk is unloaded.
+     */
+    private void syncSavedFlagInfo() {
+        if (this.level instanceof ServerLevel serverLevel) {
+            Component customName = getCustomName();
+            FlagsSavedData.getFromLevel(serverLevel).setFlagInfo(getBlockPos(),
+                    new FlagsSavedData.FlagInfo(
+                            this.ownerTeamName,
+                            customName != null ? customName.getString() : null));
+        }
     }
 
     /**
@@ -266,10 +321,29 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         return this.debugBoundary;
     }
 
+    /** Whether the protection-boundary overlay is on for this flag. */
+    public boolean isDebugBoundary() {
+        return this.debugBoundary;
+    }
+
+    /**
+     * Sets the protection-boundary overlay directly, e.g. from the base
+     * management GUI's "Show base border" checkbox. The caller is responsible
+     * for {@code sendBlockUpdated} so clients learn of the change.
+     */
+    public void setDebugBoundary(boolean visible) {
+        this.debugBoundary = visible;
+        setChanged();
+    }
+
     @Override
     public void clearRemoved() {
         super.clearRemoved();
         migrateLegacyOwnership();
+        // Loaded flags keep the saved-data name records fresh and claim a
+        // unique base name if they were last saved before names existed
+        ensureOwnedBaseName();
+        syncSavedFlagInfo();
         syncDebugOverlayState();
         syncOwnerDesign();
     }
@@ -768,6 +842,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         this.legacyOwnerUuid = null;
         setChanged();
         serverLevel.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        ensureOwnedBaseName();
+        syncSavedFlagInfo();
     }
 
     /**
@@ -854,7 +930,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 this.applyDesign(this.flagColor, BannerPatternLayers.EMPTY);
             }
         }
+        // A flag changing hands keeps its name only while it's still unique
+        // in the new team; otherwise it's renamed like a fresh placement
+        ensureOwnedBaseName();
         setChanged();
+        syncSavedFlagInfo();
     }
 
     /**
@@ -1030,6 +1110,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         BlockPos pos = getBlockPos();
         serverLevel.setBlock(pos, getBlockState().setValue(BaseFlagBlock.CAPTURED, true), 3);
         FlagsSavedData.getFromLevel(serverLevel).addCapturedFlagLocation(pos);
+        syncSavedFlagInfo();
 
         // The capturing faction hoists its own standard over the flag
         this.applyDesign(this.flagColor, faction.baseFlagPatterns(serverLevel.registryAccess()));

@@ -60,6 +60,15 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.faction_pledge.name_taken", "That faction name is already taken.");
         this.add("gui.basebuster.faction_pledge.name_invalid", "Invalid faction name.");
         this.add("gui.basebuster.faction_pledge.created", "Faction '%s' created!");
+        this.add("gui.basebuster.base_management.title", "Base Settings");
+        this.add("gui.basebuster.base_management.name_hint", "[Enter base name]");
+        this.add("gui.basebuster.base_management.show_border", "Show base border?");
+        this.add("gui.basebuster.base_management.save", "Save");
+        this.add("gui.basebuster.base_management.level", "Base Level: %s");
+        this.add("gui.basebuster.base_management.saved", "Base settings saved.");
+        this.add("gui.basebuster.base_management.not_member", "Only the flag's owning team can edit its base.");
+        this.add("gui.basebuster.base_management.name_taken", "Your team already has a base named '%s'.");
+        this.add("gui.basebuster.base_management.name_invalid", "Invalid base name.");
         this.add("item.basebuster.faction_pledge.unbound_hint_bind", "Right-click: bind to your current faction");
         this.add("item.basebuster.faction_pledge.unbound_hint_create", "Sneak + right-click: create a new faction");
         this.add("item.basebuster.faction_pledge.bound_to", "Bound to faction: %s");

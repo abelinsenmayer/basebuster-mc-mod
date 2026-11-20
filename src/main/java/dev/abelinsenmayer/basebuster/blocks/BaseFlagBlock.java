@@ -1,7 +1,7 @@
 package dev.abelinsenmayer.basebuster.blocks;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
-import dev.abelinsenmayer.basebuster.client.FactionPledgeScreen;
+import dev.abelinsenmayer.basebuster.client.BaseFlagScreen;
 import dev.abelinsenmayer.basebuster.items.RepairHammerItem;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
@@ -113,12 +113,14 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
 
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
-        // AbstractBannerBlock applies the item's custom name to the block entity
         super.setPlacedBy(level, pos, state, placer, stack);
         if (!level.isClientSide && placer instanceof Player player) {
             // Flags belong to the placer's team, not to the player; a
             // teamless placer is refused the whole placement earlier (see
-            // BaseBusterEventBus#onFlagPlace)
+            // BaseBusterEventBus#onFlagPlace). setOwnerTeam also assigns the
+            // flag a unique "Base N" name, overwriting any anvil name the
+            // item carried -- the base management GUI is the only way to
+            // rename a base
             Team team = player.getTeam();
             BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
             if (team != null && blockEntity != null) {
@@ -173,7 +175,7 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
             // resolve lazily on the physical client only, as in
             // FactionPledgeItem, so this stays safe on dedicated servers
             if (blockEntity.isOwnedBy(player)) {
-                openFactionEditor(pos, blockEntity);
+                openFlagEditor(pos, blockEntity);
             } else {
                 player.displayClientMessage(blockEntity.getInfoForDisplay(), false);
             }
@@ -195,20 +197,30 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
     }
 
     /**
-     * Opens the faction settings screen prefilled with the owning team's
-     * current configuration. Only called client-side, after
-     * {@link BaseFlagBlockEntity#isOwnedBy} confirmed the clicker is a
-     * member, so {@link BaseFlagBlockEntity#getOwnerTeam} cannot be null.
+     * Opens the flag management screen prefilled with the owning team's
+     * current configuration and the flag's base settings. Only called
+     * client-side, after {@link BaseFlagBlockEntity#isOwnedBy} confirmed the
+     * clicker is a member, so {@link BaseFlagBlockEntity#getOwnerTeam}
+     * cannot be null.
      */
-    private void openFactionEditor(BlockPos pos, BaseFlagBlockEntity blockEntity) {
+    private void openFlagEditor(BlockPos pos, BaseFlagBlockEntity blockEntity) {
         PlayerTeam team = blockEntity.getOwnerTeam();
-        Minecraft.getInstance().setScreen(new FactionPledgeScreen(pos,
-                new FactionPledgeScreen.Prefill(
+        // The team tab's icon is a banner wearing this flag's colors
+        ItemStack flagIcon = new ItemStack(BannerBlock.byColor(blockEntity.getBaseColor()));
+        flagIcon.set(DataComponents.BANNER_PATTERNS, blockEntity.getPatterns());
+        Component baseName = blockEntity.getCustomName();
+        Minecraft.getInstance().setScreen(new BaseFlagScreen(pos,
+                new BaseFlagScreen.Prefill(
                         team.getName(),
                         team.getColor(),
                         team.isAllowFriendlyFire(),
                         team.getNameTagVisibility() != Team.Visibility.ALWAYS,
-                        !team.getPlayerPrefix().getString().isEmpty())));
+                        !team.getPlayerPrefix().getString().isEmpty()),
+                new BaseFlagScreen.BaseInfo(
+                        baseName != null ? baseName.getString() : null,
+                        blockEntity.getBaseLevel(),
+                        blockEntity.isDebugBoundary(),
+                        flagIcon)));
     }
 
     @Override
@@ -224,33 +236,6 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
                     level.sendBlockUpdated(pos, state, state, 3);
                     player.displayClientMessage(
                             Component.literal("Flag boundary " + (visible ? "shown" : "hidden")), true);
-                }
-            }
-            return ItemInteractionResult.sidedSuccess(level.isClientSide);
-        }
-
-        // Renaming: anvil-named flag items carry their name into the block on
-        // placement, and a named name tag renames a flag that's already down
-        if (stack.is(Items.NAME_TAG)) {
-            Component name = stack.get(DataComponents.CUSTOM_NAME);
-            // An unused (unnamed) tag falls through to the normal flag interaction
-            if (name == null) {
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-            }
-            if (!level.isClientSide) {
-                BaseFlagBlockEntity blockEntity = getBlockEntity(level, pos);
-                if (blockEntity == null || !blockEntity.isOwnedBy(player)) {
-                    player.displayClientMessage(
-                            Component.literal("Only the flag's owning team can rename it")
-                                    .withStyle(ChatFormatting.RED),
-                            true);
-                    return ItemInteractionResult.sidedSuccess(level.isClientSide);
-                }
-                blockEntity.setFlagName(name);
-                blockEntity.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
-                if (!player.hasInfiniteMaterials()) {
-                    stack.shrink(1);
                 }
             }
             return ItemInteractionResult.sidedSuccess(level.isClientSide);

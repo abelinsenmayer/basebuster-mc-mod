@@ -1,7 +1,7 @@
 package dev.abelinsenmayer.basebuster.items;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
-import dev.abelinsenmayer.basebuster.client.FactionPledgeScreen;
+import dev.abelinsenmayer.basebuster.client.BaseFlagScreen;
 import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -22,7 +22,7 @@ import net.minecraft.world.scores.Scoreboard;
  * team name in the {@link BaseBuster#FACTION} data component. Interactions:
  * sneak-right-click always opens the creation GUI; right-click on an unbound
  * pledge binds it to the player's current faction; right-click on a bound
- * pledge joins its faction and consumes it. The {@link FactionPledgeScreen}
+ * pledge joins its faction and consumes it. The {@link BaseFlagScreen}
  * class reference resolves lazily on the physical client only, so this stays
  * safe on dedicated servers.
  */
@@ -39,7 +39,7 @@ public class FactionPledgeItem extends Item {
         if (player.isShiftKeyDown()) {
             // Sneak-right-click: always the faction-creation GUI
             if (level.isClientSide) {
-                Minecraft.getInstance().setScreen(new FactionPledgeScreen());
+                Minecraft.getInstance().setScreen(new BaseFlagScreen());
             }
         } else if (boundFaction != null) {
             if (!level.isClientSide) {

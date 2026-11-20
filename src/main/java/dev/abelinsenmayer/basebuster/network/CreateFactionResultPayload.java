@@ -1,7 +1,7 @@
 package dev.abelinsenmayer.basebuster.network;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
-import dev.abelinsenmayer.basebuster.client.FactionPledgeScreen;
+import dev.abelinsenmayer.basebuster.client.BaseFlagScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -37,7 +37,7 @@ public record CreateFactionResultPayload(boolean success, Component message)
 
     /** Client-side handler: delivers the result to the open pledge screen. */
     public static void handle(CreateFactionResultPayload payload, IPayloadContext context) {
-        if (Minecraft.getInstance().screen instanceof FactionPledgeScreen screen) {
+        if (Minecraft.getInstance().screen instanceof BaseFlagScreen screen) {
             screen.onCreateResult(payload);
         }
     }
