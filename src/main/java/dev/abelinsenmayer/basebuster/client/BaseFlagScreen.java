@@ -1,9 +1,12 @@
 package dev.abelinsenmayer.basebuster.client;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.network.CreateFactionPayload;
 import dev.abelinsenmayer.basebuster.network.CreateFactionResultPayload;
 import dev.abelinsenmayer.basebuster.network.EditBasePayload;
 import dev.abelinsenmayer.basebuster.network.EditFactionPayload;
+import dev.abelinsenmayer.basebuster.network.ManageRepairsPayload;
 import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Nullable;
@@ -13,8 +16,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractScrollWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.ContainerObjectSelectionList;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.narration.NarratableEntry;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
@@ -38,6 +44,13 @@ import net.neoforged.neoforge.network.PacketDistributor;
  *   <li><b>Base</b> (an emerald): flag-specific settings -- the base name,
  *   border visibility, its level, and (eventually) its citizens. Submits via
  *   {@link EditBasePayload}; the server enforces unique base names per team.
+ *   <li><b>Repairs</b> (an iron repair hammer): the flag's saved repair
+ *   targets in a scrollable list under pinned column headers. Each row shows
+ *   the destroyed block's item icon, its coordinates, the icon of whatever
+ *   currently obstructs the spot (a snapshot taken when the row is built),
+ *   and Abandon/Repair buttons that apply immediately via
+ *   {@link ManageRepairsPayload}. A pinned Repair all button restores every
+ *   target at once.
  * </ul>
  *
  * <p>Tabs appear only when the screen was opened from a flag; the faction
@@ -57,9 +70,9 @@ public class BaseFlagScreen extends Screen {
     public record BaseInfo(@Nullable String name, int baseLevel, boolean showBorder,
             ItemStack flagIcon) {}
 
-    private enum Tab { TEAM, BASE }
+    private enum Tab { TEAM, BASE, REPAIRS }
 
-    private static final int PANEL_WIDTH = 292;
+    private static final int PANEL_WIDTH = 340;
     private static final int PANEL_HEIGHT = 202;
     private static final int PANEL_FILL = 0xFFC6C6C6;
     private static final int PANEL_FILL_DIM = 0xFF9A9A9A;
@@ -96,6 +109,13 @@ public class BaseFlagScreen extends Screen {
     private Button baseSaveButton;
     @Nullable
     private CitizenList citizenList;
+    // Repairs tab widgets
+    @Nullable
+    private Button abandonAllButton;
+    @Nullable
+    private Button repairAllButton;
+    @Nullable
+    private RepairList repairList;
 
     // Index into CreateFactionPayload.SELECTABLE_COLORS; -1 = unanswered
     private int selectedColorIndex = -1;
@@ -141,11 +161,11 @@ public class BaseFlagScreen extends Screen {
         this.panelLeft = (this.width - PANEL_WIDTH) / 2;
         this.panelTop = (this.height - PANEL_HEIGHT) / 2;
 
-        // Tab strip along the panel's top edge; only flags have a base tab.
-        // Order per the mockup: team (banner matching this flag), then base
-        // (emerald)
+        // Tab strip along the panel's top edge; only flags have the extra
+        // tabs. Order: team (banner matching this flag), base (emerald),
+        // repairs (iron hammer)
         if (this.flagPos != null && this.baseInfo != null) {
-            int stripWidth = 2 * TAB_WIDTH + TAB_GAP;
+            int stripWidth = 3 * TAB_WIDTH + 2 * TAB_GAP;
             int tabX = this.panelLeft + (PANEL_WIDTH - stripWidth) / 2;
             int tabY = this.panelTop - TAB_HEIGHT + TAB_OVERLAP;
             addRenderableWidget(new ItemTab(tabX, tabY, Tab.TEAM,
@@ -154,6 +174,9 @@ public class BaseFlagScreen extends Screen {
             addRenderableWidget(new ItemTab(tabX + TAB_WIDTH + TAB_GAP, tabY, Tab.BASE,
                     new ItemStack(Items.EMERALD),
                     Component.translatable("gui.basebuster.base_management.title")));
+            addRenderableWidget(new ItemTab(tabX + 2 * (TAB_WIDTH + TAB_GAP), tabY, Tab.REPAIRS,
+                    new ItemStack(BaseBuster.IRON_REPAIR_HAMMER.get()),
+                    Component.translatable("gui.basebuster.repairs.title")));
         }
 
         // Team name: capped at 50 chars. Edit mode skips the box entirely --
@@ -249,6 +272,29 @@ public class BaseFlagScreen extends Screen {
             this.citizenList = addRenderableWidget(new CitizenList(
                     this.panelLeft + 12, this.panelTop + 114,
                     PANEL_WIDTH - 24, PANEL_HEIGHT - 114 - 12));
+
+            // Repairs tab: pinned header with column labels on top and the
+            // bulk Abandon/Repair buttons right-aligned beneath them, then a
+            // scrollable list of repair rows (the column offsets must agree
+            // with RepairEntry.render and renderBackground)
+            int bulkY = this.panelTop + 26;
+            this.repairAllButton = addRenderableWidget(Button.builder(
+                            Component.translatable("gui.basebuster.repairs.repair_all"),
+                            button -> PacketDistributor.sendToServer(new ManageRepairsPayload(
+                                    this.flagPos, ManageRepairsPayload.Action.REPAIR_ALL,
+                                    BlockPos.ZERO)))
+                    .bounds(this.panelLeft + PANEL_WIDTH - 12 - 76, bulkY, 76, 20)
+                    .build());
+            this.abandonAllButton = addRenderableWidget(Button.builder(
+                            Component.translatable("gui.basebuster.repairs.abandon_all"),
+                            button -> PacketDistributor.sendToServer(new ManageRepairsPayload(
+                                    this.flagPos, ManageRepairsPayload.Action.ABANDON_ALL,
+                                    BlockPos.ZERO)))
+                    .bounds(this.panelLeft + PANEL_WIDTH - 12 - 76 - 4 - 84, bulkY, 84, 20)
+                    .build());
+            this.repairList = addRenderableWidget(new RepairList(
+                    this.panelLeft + 12, this.panelTop + 50,
+                    PANEL_WIDTH - 24, PANEL_HEIGHT - 50 - 12));
         }
 
         this.applyTabVisibility();
@@ -300,6 +346,8 @@ public class BaseFlagScreen extends Screen {
     /** Shows exactly the widgets belonging to the active tab. */
     private void applyTabVisibility() {
         boolean team = this.activeTab == Tab.TEAM;
+        boolean base = this.activeTab == Tab.BASE;
+        boolean repairs = this.activeTab == Tab.REPAIRS;
         if (this.nameBox != null) {
             this.nameBox.visible = team;
         }
@@ -313,17 +361,46 @@ public class BaseFlagScreen extends Screen {
             this.createButton.visible = team;
         }
         if (this.baseNameBox != null) {
-            this.baseNameBox.visible = !team;
+            this.baseNameBox.visible = base;
         }
         if (this.borderCheckbox != null) {
-            this.borderCheckbox.visible = !team;
+            this.borderCheckbox.visible = base;
         }
         if (this.baseSaveButton != null) {
-            this.baseSaveButton.visible = !team;
+            this.baseSaveButton.visible = base;
         }
         if (this.citizenList != null) {
-            this.citizenList.visible = !team;
+            this.citizenList.visible = base;
         }
+        if (this.repairAllButton != null) {
+            this.repairAllButton.visible = repairs;
+        }
+        if (this.abandonAllButton != null) {
+            this.abandonAllButton.visible = repairs;
+        }
+        if (this.repairList != null) {
+            this.repairList.visible = repairs;
+        }
+    }
+
+    /**
+     * Pulls the flag's repair list once per tick so rows appear and disappear
+     * as the block entity syncs from the server, and keeps Repair all disabled
+     * while the list is empty.
+     */
+    @Override
+    public void tick() {
+        super.tick();
+        if (this.flagPos == null || this.repairList == null
+                || this.minecraft == null || this.minecraft.level == null
+                || !(this.minecraft.level.getBlockEntity(this.flagPos)
+                        instanceof BaseFlagBlockEntity flagEntity)) {
+            return;
+        }
+        this.repairList.refresh(flagEntity.getRepairTargets());
+        boolean hasRepairs = !flagEntity.getRepairTargets().isEmpty();
+        this.repairAllButton.active = hasRepairs;
+        this.abandonAllButton.active = hasRepairs;
     }
 
     private void selectColor(int colorIndex, ColorSwatch swatch) {
@@ -418,7 +495,7 @@ public class BaseFlagScreen extends Screen {
                 graphics.drawCenteredString(this.font, this.styledResult(),
                         this.width / 2, this.panelTop + 158, ERROR_COLOR);
             }
-        } else {
+        } else if (this.activeTab == Tab.BASE) {
             graphics.drawCenteredString(this.font,
                     Component.translatable("gui.basebuster.base_management.title"),
                     this.width / 2, this.panelTop + 8, LABEL_COLOR);
@@ -434,6 +511,21 @@ public class BaseFlagScreen extends Screen {
                 graphics.drawCenteredString(this.font, this.styledResult(),
                         this.width / 2, this.panelTop + 102, ERROR_COLOR);
             }
+        } else {
+            // Repairs tab: pinned column headers above the scrollable list,
+            // on the row above the bulk Abandon/Repair buttons. The offsets
+            // match the columns in RepairEntry.render
+            int listLeft = this.panelLeft + 12;
+            int headerY = this.panelTop + 14;
+            graphics.drawString(this.font,
+                    Component.translatable("gui.basebuster.repairs.column_block"),
+                    listLeft + 6, headerY, LABEL_COLOR);
+            graphics.drawString(this.font,
+                    Component.translatable("gui.basebuster.repairs.column_location"),
+                    listLeft + 40, headerY, LABEL_COLOR);
+            graphics.drawString(this.font,
+                    Component.translatable("gui.basebuster.repairs.column_obstruction"),
+                    listLeft + 150, headerY, LABEL_COLOR);
         }
     }
 
@@ -496,6 +588,136 @@ public class BaseFlagScreen extends Screen {
         @Override
         protected void updateWidgetNarration(NarrationElementOutput output) {
             defaultButtonNarrationText(output);
+        }
+    }
+
+    private static final int ROW_HEIGHT = 24;
+    private static final int ROW_BUTTON_WIDTH = 58;
+
+    /**
+     * The scrollable list of the flag's saved repairs. The pinned headers sit
+     * above it in {@link #renderBackground}; this widget holds only the rows.
+     * Rows rebuild whenever the synced {@link BaseFlagBlockEntity} repair list
+     * changes -- a repair or abandon applied server-side arrives on the next
+     * block-entity update.
+     */
+    private class RepairList extends ContainerObjectSelectionList<RepairEntry> {
+        RepairList(int x, int y, int width, int height) {
+            super(BaseFlagScreen.this.minecraft, width, height, y, ROW_HEIGHT);
+            this.setX(x);
+        }
+
+        /** Rebuilds the rows when {@code targets} no longer matches them. */
+        void refresh(List<BaseFlagBlockEntity.RepairTarget> targets) {
+            boolean same = children().size() == targets.size();
+            for (int i = 0; same && i < targets.size(); i++) {
+                same = children().get(i).target.pos().equals(targets.get(i).pos());
+            }
+            if (same) {
+                return;
+            }
+            double scroll = getScrollAmount();
+            clearEntries();
+            for (BaseFlagBlockEntity.RepairTarget target : targets) {
+                addEntry(new RepairEntry(target));
+            }
+            setScrollAmount(scroll);
+        }
+
+        // Vanilla caps entries at 220px and centers them; use the full list
+        // width instead, leaving room for the scrollbar on the right
+        @Override
+        public int getRowWidth() {
+            return this.width - 10;
+        }
+
+        // The panel supplies the list's background; suppress the vanilla dark
+        // texture and separator lines so rows sit on the panel's fill
+        @Override
+        protected void renderListBackground(GuiGraphics graphics) {}
+
+        @Override
+        protected void renderListSeparators(GuiGraphics graphics) {}
+    }
+
+    /**
+     * One repair row: the destroyed block's item icon, its coordinates, the
+     * obstructing block's icon (an empty stack when the spot is air), and
+     * Abandon/Repair buttons. The obstruction is a snapshot taken when the
+     * row is built -- the tab doesn't live-update it.
+     */
+    private class RepairEntry extends ContainerObjectSelectionList.Entry<RepairEntry> {
+        private final BaseFlagBlockEntity.RepairTarget target;
+        private final ItemStack blockIcon;
+        private final ItemStack obstructionIcon;
+        private final Button abandonButton;
+        private final Button repairButton;
+        private final List<Button> buttons;
+
+        RepairEntry(BaseFlagBlockEntity.RepairTarget target) {
+            this.target = target;
+            this.blockIcon = iconFor(target.state());
+            this.obstructionIcon = BaseFlagScreen.this.minecraft.level != null
+                    ? iconFor(BaseFlagScreen.this.minecraft.level.getBlockState(target.pos()))
+                    : ItemStack.EMPTY;
+            this.abandonButton = Button.builder(
+                            Component.translatable("gui.basebuster.repairs.abandon"),
+                            button -> PacketDistributor.sendToServer(new ManageRepairsPayload(
+                                    flagPos, ManageRepairsPayload.Action.ABANDON, target.pos())))
+                    .size(ROW_BUTTON_WIDTH, 20)
+                    .build();
+            this.repairButton = Button.builder(
+                            Component.translatable("gui.basebuster.repairs.repair"),
+                            button -> PacketDistributor.sendToServer(new ManageRepairsPayload(
+                                    flagPos, ManageRepairsPayload.Action.REPAIR, target.pos())))
+                    .size(ROW_BUTTON_WIDTH, 20)
+                    .build();
+            this.buttons = List.of(this.abandonButton, this.repairButton);
+        }
+
+        /** The block's item icon, or an empty stack for blocks without one. */
+        private static ItemStack iconFor(net.minecraft.world.level.block.state.BlockState state) {
+            return state.isAir() || state.getBlock().asItem() == Items.AIR
+                    ? ItemStack.EMPTY
+                    : new ItemStack(state.getBlock());
+        }
+
+        @Override
+        public void render(GuiGraphics graphics, int index, int top, int left, int width, int height,
+                int mouseX, int mouseY, boolean hovered, float partialTick) {
+            // Row panel, inset so it reads as a card inside the list
+            graphics.fill(left + 2, top, left + width - 2, top + height - 2,
+                    hovered ? PANEL_FILL : PANEL_FILL_DIM);
+            graphics.renderOutline(left + 2, top, width - 4, height - 2, PANEL_EDGE_DARK);
+
+            int iconY = top + (height - 2 - 16) / 2;
+            if (!this.blockIcon.isEmpty()) {
+                graphics.renderFakeItem(this.blockIcon, left + 6, iconY);
+            }
+            BlockPos pos = this.target.pos();
+            graphics.drawString(font,
+                    pos.getX() + ", " + pos.getY() + ", " + pos.getZ(),
+                    left + 34, top + (height - 2 - 9) / 2, LABEL_COLOR, false);
+            if (!this.obstructionIcon.isEmpty()) {
+                graphics.renderFakeItem(this.obstructionIcon, left + 150, iconY);
+            }
+
+            this.abandonButton.setX(left + width - 4 - 2 * ROW_BUTTON_WIDTH - 4);
+            this.abandonButton.setY(top + 1);
+            this.abandonButton.render(graphics, mouseX, mouseY, partialTick);
+            this.repairButton.setX(left + width - 4 - ROW_BUTTON_WIDTH);
+            this.repairButton.setY(top + 1);
+            this.repairButton.render(graphics, mouseX, mouseY, partialTick);
+        }
+
+        @Override
+        public List<? extends GuiEventListener> children() {
+            return this.buttons;
+        }
+
+        @Override
+        public List<? extends NarratableEntry> narratables() {
+            return this.buttons;
         }
     }
 

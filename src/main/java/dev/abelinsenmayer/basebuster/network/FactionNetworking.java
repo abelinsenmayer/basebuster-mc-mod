@@ -16,6 +16,8 @@ public final class FactionNetworking {
                 EditFactionPayload::handle);
         registrar.playToServer(EditBasePayload.TYPE, EditBasePayload.STREAM_CODEC,
                 EditBasePayload::handle);
+        registrar.playToServer(ManageRepairsPayload.TYPE, ManageRepairsPayload.STREAM_CODEC,
+                ManageRepairsPayload::handle);
         registrar.playToClient(CreateFactionResultPayload.TYPE, CreateFactionResultPayload.STREAM_CODEC,
                 CreateFactionResultPayload::handle);
     }

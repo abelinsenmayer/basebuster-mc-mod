@@ -44,7 +44,9 @@ import net.minecraft.world.scores.Team;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -628,6 +630,28 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         return repairTargets.size();
     }
 
+    /** The recorded repair targets; unmodifiable. Synced to clients via the update tag. */
+    public List<RepairTarget> getRepairTargets() {
+        return Collections.unmodifiableList(repairTargets);
+    }
+
+    /**
+     * Drops one saved target's loot-table drops and inventory contents just
+     * above the flag, as though {@code player} had broken the original block
+     * with a diamond pickaxe.
+     */
+    private void dropRepairTargetLoot(RepairTarget target, ServerLevel serverLevel, @Nullable Player player) {
+        ItemStack breakingTool = new ItemStack(Items.DIAMOND_PICKAXE);
+        BlockPos dropPos = getBlockPos().above();
+        Block.dropResources(target.state(), serverLevel, dropPos, target.blockEntity(), player, breakingTool);
+        // Containers keep their contents in the block entity, not the loot table; drop them
+        // like a real break would. Shulker boxes are skipped because their contents are
+        // already copied into the dropped item by the loot table.
+        if (target.blockEntity() instanceof Container container && !(target.state().getBlock() instanceof ShulkerBoxBlock)) {
+            Containers.dropContents(serverLevel, dropPos, container);
+        }
+    }
+
     /**
      * Discards all stored repair targets, dropping each saved block's loot-table drops and
      * inventory contents just above the flag, as though {@code player} had broken the
@@ -640,19 +664,61 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return;
         }
 
-        ItemStack breakingTool = new ItemStack(Items.DIAMOND_PICKAXE);
-        BlockPos dropPos = getBlockPos().above();
         for (RepairTarget target : repairTargets) {
-            Block.dropResources(target.state(), serverLevel, dropPos, target.blockEntity(), player, breakingTool);
-            // Containers keep their contents in the block entity, not the loot table; drop them
-            // like a real break would. Shulker boxes are skipped because their contents are
-            // already copied into the dropped item by the loot table.
-            if (target.blockEntity() instanceof Container container && !(target.state().getBlock() instanceof ShulkerBoxBlock)) {
-                Containers.dropContents(serverLevel, dropPos, container);
-            }
+            dropRepairTargetLoot(target, serverLevel, player);
         }
         repairTargets.clear();
         setChanged();
+    }
+
+    /**
+     * Repairs the saved target at {@code pos}: restores its block and drops
+     * whatever currently occupies the spot. Server-side; the caller is
+     * responsible for {@code sendBlockUpdated} so open GUIs see the change.
+     *
+     * @return whether a matching target existed and repaired successfully
+     */
+    public boolean repairTarget(BlockPos pos, ItemStack breakingTool, Player player) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+        RepairTarget target = null;
+        for (RepairTarget candidate : repairTargets) {
+            if (candidate.pos().equals(pos)) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target == null) {
+            return false;
+        }
+        if (tryRepairTarget(serverLevel, target, breakingTool, player)) {
+            repairTargets.remove(target);
+            setChanged();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Discards the saved target at {@code pos} alone, dropping its loot above
+     * the flag like {@link #abandonRepairs} does for the whole list.
+     * Server-side; the caller is responsible for {@code sendBlockUpdated}.
+     */
+    public void abandonRepair(BlockPos pos, @Nullable Player player) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        Iterator<RepairTarget> iterator = repairTargets.iterator();
+        while (iterator.hasNext()) {
+            RepairTarget target = iterator.next();
+            if (target.pos().equals(pos)) {
+                dropRepairTargetLoot(target, serverLevel, player);
+                iterator.remove();
+                setChanged();
+                return;
+            }
+        }
     }
 
     /**
@@ -753,6 +819,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             for (int i = 0; i < count; i++) {
                 repairTargets.add(RepairTarget.deserialize(repairTargetsTag.getCompound("target" + i), registries));
             }
+        } else {
+            // saveAdditional omits the tag when the list is empty, and update
+            // tags follow the same shape -- absent means no remaining repairs
+            this.repairTargets = new ArrayList<>();
         }
     }
 
