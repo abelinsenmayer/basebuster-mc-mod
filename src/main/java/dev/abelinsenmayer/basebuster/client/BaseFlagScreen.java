@@ -140,6 +140,10 @@ public class BaseFlagScreen extends Screen {
     @Nullable
     private final BaseInfo baseInfo;
     private Tab activeTab;
+    // Live citizen roster stats pulled from the synced flag each tick for
+    // the base tab's counter; -1 until the first tick resolves the entity
+    private int citizenCount = -1;
+    private int citizenCapacity = -1;
 
     /** Create mode: opened from a faction founding document, so only the team page shows. */
     public BaseFlagScreen() {
@@ -412,6 +416,8 @@ public class BaseFlagScreen extends Screen {
         if (this.citizenList != null) {
             this.citizenList.refresh(flagEntity.getCitizens());
         }
+        this.citizenCount = flagEntity.getCitizens().size();
+        this.citizenCapacity = flagEntity.getCitizenCapacity();
     }
 
     private void selectColor(int colorIndex, ColorSwatch swatch) {
@@ -517,6 +523,15 @@ public class BaseFlagScreen extends Screen {
             graphics.drawString(this.font, levelText,
                     this.panelLeft + PANEL_WIDTH - 12 - this.font.width(levelText),
                     this.panelTop + 26, LABEL_COLOR);
+
+            // Citizens counter above the roster; the synced entity supplies
+            // live values once the first tick resolves it
+            if (this.citizenCapacity >= 0) {
+                graphics.drawString(this.font,
+                        Component.translatable("gui.basebuster.base_management.citizens",
+                                this.citizenCount, this.citizenCapacity),
+                        left, this.panelTop + 102, LABEL_COLOR);
+            }
 
             if (this.resultMessage != null) {
                 graphics.drawCenteredString(this.font, this.styledResult(),

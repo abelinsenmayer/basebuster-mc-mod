@@ -78,12 +78,19 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
     // Ticks between scans cataloguing the villagers inside this flag's sphere (30 seconds)
-    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 1 * 20;  // ABE TODO set back to 30x20
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 5 * 20;  // ABE TODO set back to 30x20
     // Consecutive scans a non-citizen must be seen in range before it's granted
     // citizenship; the same count of missed scans revokes a citizen's status
     private static final int CITIZENSHIP_SCANS = 4;
     // Default name given to unnamed citizens; revocation strips only this one
     private static final String DEFAULT_CITIZEN_NAME = "Villager";
+    // Citizens a base of each level can support: CITIZEN_CAPACITIES[level - 1].
+    // A roster already over its level's cap keeps its citizens for
+    // OVER_CAPACITY_GRACE_SCANS scans before the excess is pruned
+    private static final int[] CITIZEN_CAPACITIES = {8, 16, 32, 48, 64};
+    // Citizen scans a base may stay over capacity before excess citizens are
+    // pruned -- a shrinking base's grace period to regain its level
+    private static final int OVER_CAPACITY_GRACE_SCANS = 4;
 
     // The name of the scoreboard team that owns this flag; null while unowned.
     // Raider factions own flags through their faction teams (see
@@ -163,6 +170,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Non-citizen UUID -> consecutive scans it was seen inside the sphere.
     // In-memory only; a missed scan resets the count
     private final Map<UUID, Integer> settlerSightings = new HashMap<>();
+    // Consecutive scans the roster has exceeded its level's citizen cap.
+    // In-memory only; the prune grace period restarts after a reload
+    private int overCapacityScans = 0;
 
     public BaseFlagBlockEntity(BlockPos pos, BlockState blockState) {
         // BannerBlockEntity hardcodes the vanilla BANNER type internally; we
@@ -448,7 +458,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * the roster change.
      */
     public void addCitizen(Villager villager) {
-        if (isCitizen(villager.getUUID())) {
+        if (isCitizen(villager.getUUID()) || !hasCitizenRoom()) {
             return;
         }
         Component customName = villager.getCustomName();
@@ -468,6 +478,21 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     /** The villagers settled under this flag; unmodifiable. */
     public List<Citizen> getCitizens() {
         return Collections.unmodifiableList(this.citizens);
+    }
+
+    /** The most citizens this base's current level supports. */
+    public int getCitizenCapacity() {
+        int index = Math.min(Math.max(this.baseLevel, 1), CITIZEN_CAPACITIES.length) - 1;
+        return CITIZEN_CAPACITIES[index];
+    }
+
+    /**
+     * Whether the roster has room for one more citizen under this base's
+     * level cap. The only citizenship paths -- certificate releases and
+     * scan-settled villagers -- check this before enrolling.
+     */
+    public boolean hasCitizenRoom() {
+        return this.citizens.size() < getCitizenCapacity();
     }
 
     /**
@@ -556,10 +581,57 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             this.settlerSightings.clear();
         }
 
+        rosterChanged |= this.enforceCitizenCapacity(serverLevel);
+
         if (rosterChanged) {
             setChanged();
             serverLevel.sendBlockUpdated(flagPos, getBlockState(), getBlockState(), 3);
         }
+    }
+
+    /**
+     * Applies the level's citizen cap to an overgrown roster. A base whose
+     * roster exceeds what its level supports -- because it dropped a level
+     * since the citizens settled -- gets {@link #OVER_CAPACITY_GRACE_SCANS}
+     * scans to recover; the owner team is told as the grace period starts.
+     * Still over capacity when it expires, random citizens lose citizenship
+     * until the roster fits the cap again.
+     *
+     * @return whether the roster changed
+     */
+    private boolean enforceCitizenCapacity(ServerLevel serverLevel) {
+        int excess = this.citizens.size() - getCitizenCapacity();
+        if (excess <= 0) {
+            this.overCapacityScans = 0;
+            return false;
+        }
+        this.overCapacityScans++;
+        if (this.overCapacityScans == 1) {
+            Component name = getCustomName();
+            notifyOwnerTeam(
+                    Component.literal(excess + (excess == 1 ? " citizen" : " citizens")
+                                    + " will be removed from "
+                                    + (name != null ? name.getString() : "your base")
+                                    + " because it's no longer high-enough level to support them.")
+                            .withStyle(ChatFormatting.RED),
+                    false);
+            return false;
+        }
+        if (this.overCapacityScans <= OVER_CAPACITY_GRACE_SCANS) {
+            return false;
+        }
+        this.overCapacityScans = 0;
+        // Prune back to the cap; a level mid-recovery could still be over
+        int toRemove = Math.min(excess, this.citizens.size());
+        List<Citizen> shuffled = new ArrayList<>(this.citizens);
+        Collections.shuffle(shuffled);
+        for (int i = 0; i < toRemove; i++) {
+            Citizen pruned = shuffled.get(i);
+            this.citizens.remove(pruned);
+            this.citizenAbsences.remove(pruned.id());
+            this.revokeCitizenship(pruned.id(), serverLevel);
+        }
+        return true;
     }
 
     /**
@@ -568,6 +640,11 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * certificate holder gets.
      */
     private void grantCitizenship(Villager villager, ServerLevel serverLevel) {
+        // At the level cap a lingering villager stays a prospect; it settles
+        // on a later scan once the roster has room again
+        if (!hasCitizenRoom()) {
+            return;
+        }
         if (!villager.hasCustomName()) {
             villager.setCustomName(Component.literal(DEFAULT_CITIZEN_NAME));
         }

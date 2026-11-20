@@ -90,6 +90,13 @@ public class CitizenshipCertificateItem extends Item {
                     true);
             return InteractionResult.SUCCESS;
         }
+        if (!flagEntity.hasCitizenRoom()) {
+            player.displayClientMessage(
+                    Component.translatable("item.basebuster.citizenship_certificate.base_full")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return InteractionResult.SUCCESS;
+        }
 
         Villager citizen = EntityType.VILLAGER.create(serverLevel);
         if (citizen == null) {
