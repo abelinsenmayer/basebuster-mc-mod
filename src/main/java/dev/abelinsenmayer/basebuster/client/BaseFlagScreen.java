@@ -1,6 +1,7 @@
 package dev.abelinsenmayer.basebuster.client;
 
 import dev.abelinsenmayer.basebuster.BaseBuster;
+import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import dev.abelinsenmayer.basebuster.network.BanishCitizenPayload;
 import dev.abelinsenmayer.basebuster.network.CreateFactionPayload;
@@ -523,6 +524,20 @@ public class BaseFlagScreen extends Screen {
             graphics.drawString(this.font, levelText,
                     this.panelLeft + PANEL_WIDTH - 12 - this.font.width(levelText),
                     this.panelTop + 26, LABEL_COLOR);
+
+            // Citizen trade discount below the level: the same fraction the
+            // server applies to every offer (perLevelFraction x baseLevel).
+            // COMMON configs live on each side, so a client whose local value
+            // differs from the server's would see its own number, not the
+            // server's -- they agree whenever defaults are untouched
+            int discountPercent = (int) Math.round(
+                    Config.CITIZEN_TRADE_DISCOUNT_PER_LEVEL.get()
+                            * this.baseInfo.baseLevel() * 100);
+            Component discountText = Component.translatable(
+                    "gui.basebuster.base_management.trade_discount", discountPercent);
+            graphics.drawString(this.font, discountText,
+                    this.panelLeft + PANEL_WIDTH - 12 - this.font.width(discountText),
+                    this.panelTop + 38, LABEL_COLOR);
 
             // Citizens counter above the roster; the synced entity supplies
             // live values once the first tick resolves it

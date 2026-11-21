@@ -32,6 +32,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
@@ -494,6 +495,66 @@ public class BaseBusterEventBus {
             if (!player.addItem(certificate)) {
                 player.drop(certificate, false);
             }
+        }
+    }
+
+    /**
+     * Citizen trade discounts: a player opening trade with a villager that is
+     * a citizen of the flag whose protection sphere contains it pays
+     * {@link Config#CITIZEN_TRADE_DISCOUNT_PER_LEVEL} per base level less on
+     * every offer. The discount rides {@code MerchantOffer.specialPriceDiff},
+     * the same field vanilla's reputation and Hero-of-the-Village discounts
+     * use, so it shows in the GUI as a reduced price and governs what the
+     * trade actually costs. Diffs reset when the menu closes
+     * ({@code Villager.stopTrading}), so each trade session recomputes afresh.
+     *
+     * <p>{@code EntityInteractSpecific} covers the INTERACT_AT packet, which
+     * is what the client sends for villager right-clicks; {@code EntityInteract}
+     * covers plain INTERACT as a fallback -- see the pledge handlers above.
+     * Server-side only: mutating client-side offers would never reach a packet.
+     */
+    @SubscribeEvent
+    public void onCitizenTradeInteractAt(PlayerInteractEvent.EntityInteractSpecific event) {
+        applyCitizenTradeDiscount(event.getEntity(), event.getTarget());
+    }
+
+    @SubscribeEvent
+    public void onCitizenTradeInteract(PlayerInteractEvent.EntityInteract event) {
+        applyCitizenTradeDiscount(event.getEntity(), event.getTarget());
+    }
+
+    private static void applyCitizenTradeDiscount(Player player, Entity target) {
+        if (!(target instanceof Villager villager)
+                || !(villager.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        // Mirror the preconditions under which Villager.mobInteract opens the
+        // trade GUI. A diff applied without the GUI opening would linger on
+        // the offer -- nothing would reset it -- and compound on the next click.
+        if (!villager.isAlive() || villager.isTrading() || villager.isSleeping()
+                || villager.isBaby() || villager.getOffers().isEmpty()
+                || player.isSecondaryUseActive()) {
+            return;
+        }
+        // Same team as the trader -- citizens join the flag's owner team
+        if (!player.isAlliedTo(villager)) {
+            return;
+        }
+        // Nearest flag whose sphere covers the villager; being outside every
+        // sphere means no flag's citizen discount applies
+        BlockPos flagPos = nearestCoveringFlag(serverLevel, villager.blockPosition());
+        if (flagPos == null
+                || !(serverLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)
+                || !flagEntity.isCitizen(villager.getUUID())) {
+            return;
+        }
+        double fraction = Config.CITIZEN_TRADE_DISCOUNT_PER_LEVEL.get() * flagEntity.getBaseLevel();
+        if (fraction <= 0.0) {
+            return;
+        }
+        for (MerchantOffer offer : villager.getOffers()) {
+            int discount = (int) Math.floor(fraction * offer.getBaseCostA().getCount());
+            offer.addToSpecialPriceDiff(-discount);
         }
     }
 

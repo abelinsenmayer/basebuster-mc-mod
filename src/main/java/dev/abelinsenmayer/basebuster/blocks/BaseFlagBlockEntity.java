@@ -78,7 +78,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
     // Ticks between scans cataloguing the villagers inside this flag's sphere (30 seconds)
-    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 5 * 20;  // ABE TODO set back to 30x20
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 1 * 20;  // ABE TODO set back to 30x20
     // Consecutive scans a non-citizen must be seen in range before it's granted
     // citizenship; the same count of missed scans revokes a citizen's status
     private static final int CITIZENSHIP_SCANS = 4;

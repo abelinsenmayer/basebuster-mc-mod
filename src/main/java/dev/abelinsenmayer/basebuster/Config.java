@@ -104,6 +104,10 @@ public class Config {
             .comment("Fraction of capture progress a player gains per right-click on a flag they don't own")
             .defineInRange("flagCapture.playerProgressPerClick", 0.02, 0.001, 1.0);
 
+    public static final ModConfigSpec.DoubleValue CITIZEN_TRADE_DISCOUNT_PER_LEVEL = BUILDER
+            .comment("Fraction of a trade's base cost discounted for each level of the nearest flag when a teammate trades with one of that flag's citizens inside its protected area (level 1 = this value, level 5 = 5x)")
+            .defineInRange("citizenDiscount.perLevelFraction", 0.12, 0.0, 1.0);
+
     public static final ModConfigSpec.BooleanValue VANILLA_RAIDS_ENABLED = BUILDER
             .comment("Whether vanilla village raids may trigger. When false the mod enforces the vanilla disableRaids game rule, which blocks raid creation and stops raids in progress; the raid omen effect itself is preserved for use by this mod's own raid triggers. Note the config is authoritative: it overwrites any /gamerule disableRaids change on server start or config reload")
             .define("vanillaRaids.enabled", false);
