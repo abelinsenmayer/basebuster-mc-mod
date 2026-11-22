@@ -296,6 +296,25 @@ public class BaseBuster {
                     ImmutableSet.of(),
                     SoundEvents.ANVIL_USE));
 
+    // The Tax Collector villager profession: trades an emerald for
+    // emeralds, paying out more per trade the more citizens share its base
+    // -- see TAX_COLLECTOR_CITIZENS_PER_EMERALD. Its job site is a chiseled
+    // bookshelf, the ledger shelf. maxTickets 1 means one shelf supports
+    // one tax collector, like vanilla workstations. The acquirable_job_site
+    // POI tag (data/minecraft/tags/point_of_interest_type) lets unemployed
+    // villagers claim it.
+    public static final Block TAX_COLLECTOR_WORKSTATION = Blocks.CHISELED_BOOKSHELF;
+    public static final DeferredHolder<PoiType, PoiType> TAX_COLLECTOR_POI = POI_TYPES.register("tax_collector",
+            () -> new PoiType(Set.copyOf(TAX_COLLECTOR_WORKSTATION.getStateDefinition().getPossibleStates()), 1, 1));
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> TAX_COLLECTOR = VILLAGER_PROFESSIONS.register("tax_collector",
+            () -> new VillagerProfession(
+                    "tax_collector",
+                    poiType -> poiType.is(TAX_COLLECTOR_POI.getKey()),
+                    poiType -> poiType.is(TAX_COLLECTOR_POI.getKey()),
+                    ImmutableSet.of(Items.EMERALD),
+                    ImmutableSet.of(),
+                    SoundEvents.CHISELED_BOOKSHELF_INSERT));
+
     // The mod's creative tab, placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> BASEBUSTER_TAB = CREATIVE_MODE_TABS.register("basebuster_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.basebuster")) //The language key for the title of your CreativeModeTab
@@ -378,6 +397,7 @@ public class BaseBuster {
         LOGGER.info("HELLO FROM COMMON SETUP");
         event.enqueueWork(BaseBuster::registerArcanistTrades);
         event.enqueueWork(BaseBuster::registerGolemSmithTrades);
+        event.enqueueWork(BaseBuster::registerTaxCollectorTrades);
     }
 
     // The Arcanist's whole trade table: one emeralds -> Bottles o' Enchanting
@@ -424,6 +444,27 @@ public class BaseBuster {
                             GOLEM_SMITH_TRADE_USES, GOLEM_SMITH_TIER_XP[i])});
         }
         VillagerTrades.TRADES.put(GOLEM_SMITH.get(), trades);
+    }
+
+    // The Tax Collector's whole trade table: one emerald for one emerald --
+    // the only offer it ever makes. Interact-time scaling
+    // (BaseBusterEventBus#scaleTaxCollectorOffers) adds bonus emeralds to the
+    // result by roster size.
+    public static final int TAX_COLLECTOR_TRADE_EMERALDS = 1;
+    private static final int TAX_COLLECTOR_TRADE_USES = 1;
+    private static final int TAX_COLLECTOR_TRADE_XP = 1;
+    // Citizens on the flag's roster needed per bonus emerald at each base
+    // level (index = level - 1): starts at one per 7 and improves to one
+    // per 2 at level 5
+    public static final int[] TAX_COLLECTOR_CITIZENS_PER_EMERALD = {7, 5, 4, 3, 2};
+
+    private static void registerTaxCollectorTrades() {
+        Int2ObjectMap<VillagerTrades.ItemListing[]> trades = new Int2ObjectOpenHashMap<>();
+        trades.put(1, new VillagerTrades.ItemListing[]{
+                new VillagerTrades.ItemsForEmeralds(Items.EMERALD,
+                        TAX_COLLECTOR_TRADE_EMERALDS, 1,
+                        TAX_COLLECTOR_TRADE_USES, TAX_COLLECTOR_TRADE_XP)});
+        VillagerTrades.TRADES.put(TAX_COLLECTOR.get(), trades);
     }
 
     // The config file watcher fires this off-thread; hop to the server thread

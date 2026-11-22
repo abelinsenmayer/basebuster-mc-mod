@@ -526,9 +526,11 @@ public class BaseBusterEventBus {
      * Server-side only: mutating client-side offers would never reach a packet.
      *
      * <p>The same hook also scales an arcanist citizen's Bottle o' Enchanting
-     * results by the flag's librarian headcount, and a golem smith citizen's
-     * Iron Golem spawn egg results by its toolsmith and weaponsmith headcount
-     * -- see {@link #scaleArcanistOffers} and {@link #scaleGolemSmithOffers}.
+     * results by the flag's librarian headcount, a golem smith citizen's
+     * Iron Golem spawn egg results by its toolsmith and weaponsmith
+     * headcount, and a tax collector citizen's emerald payout by the whole
+     * roster -- see {@link #scaleArcanistOffers},
+     * {@link #scaleGolemSmithOffers}, and {@link #scaleTaxCollectorOffers}.
      */
     @SubscribeEvent
     public void onCitizenTradeInteractAt(PlayerInteractEvent.EntityInteractSpecific event) {
@@ -574,6 +576,7 @@ public class BaseBusterEventBus {
         }
         scaleArcanistOffers(villager, flagEntity);
         scaleGolemSmithOffers(villager, flagEntity);
+        scaleTaxCollectorOffers(villager, flagEntity);
     }
 
     /**
@@ -637,6 +640,31 @@ public class BaseBusterEventBus {
             if (offer.getResult().is(Items.IRON_GOLEM_SPAWN_EGG)) {
                 offer.getResult().setCount(Math.min(bases[i] + bonus,
                         Items.IRON_GOLEM_SPAWN_EGG.getDefaultMaxStackSize()));
+            }
+        }
+    }
+
+    /**
+     * Rewrites a tax collector citizen's offer so it yields one emerald plus
+     * one bonus emerald per
+     * {@link BaseBuster#TAX_COLLECTOR_CITIZENS_PER_EMERALD} citizens on the
+     * flag's roster -- a ratio that improves with base level from one per 7
+     * down to one per 2 at level 5. The roster counts include the collector
+     * itself. Same absolute-recompute scheme as the other scalers: the
+     * result resets on every trade open rather than compounding.
+     */
+    private static void scaleTaxCollectorOffers(Villager villager, BaseFlagBlockEntity flagEntity) {
+        if (villager.getVillagerData().getProfession() != BaseBuster.TAX_COLLECTOR.get()) {
+            return;
+        }
+        int index = Math.min(Math.max(flagEntity.getBaseLevel(), 1),
+                BaseBuster.TAX_COLLECTOR_CITIZENS_PER_EMERALD.length) - 1;
+        int citizensPerEmerald = BaseBuster.TAX_COLLECTOR_CITIZENS_PER_EMERALD[index];
+        int count = BaseBuster.TAX_COLLECTOR_TRADE_EMERALDS
+                + flagEntity.getCitizens().size() / citizensPerEmerald;
+        for (MerchantOffer offer : villager.getOffers()) {
+            if (offer.getResult().is(Items.EMERALD)) {
+                offer.getResult().setCount(Math.min(count, Items.EMERALD.getDefaultMaxStackSize()));
             }
         }
     }

@@ -97,6 +97,18 @@ public class CitizenshipCertificateItem extends Item {
                     true);
             return InteractionResult.SUCCESS;
         }
+        // One tax collector per base; the stored NBT carries the profession,
+        // so the release can be refused before the villager spawns
+        CompoundTag villagerTag = entityData.copyTag();
+        if (BaseBuster.TAX_COLLECTOR.getId().toString().equals(
+                        villagerTag.getCompound("VillagerData").getString("profession"))
+                && flagEntity.hasTaxCollectorCitizen()) {
+            player.displayClientMessage(
+                    Component.translatable("item.basebuster.citizenship_certificate.tax_collector_present")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return InteractionResult.SUCCESS;
+        }
 
         Villager citizen = EntityType.VILLAGER.create(serverLevel);
         if (citizen == null) {

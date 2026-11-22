@@ -96,12 +96,15 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("entity.minecraft.zombie_villager.arcanist", "Zombie Arcanist");
         this.add("entity.minecraft.villager.golem_smith", "Golem Smith");
         this.add("entity.minecraft.zombie_villager.golem_smith", "Zombie Golem Smith");
+        this.add("entity.minecraft.villager.tax_collector", "Tax Collector");
+        this.add("entity.minecraft.zombie_villager.tax_collector", "Zombie Tax Collector");
         this.addItem(BaseBuster.CITIZENSHIP_CERTIFICATE, "Citizenship Certificate");
         this.add("item.basebuster.citizenship_certificate.bound_to", "Bound villager: %s");
         this.add("item.basebuster.citizenship_certificate.profession", "Profession: %s");
         this.add("item.basebuster.citizenship_certificate.hint_place", "Right-click the ground inside a team's base to release");
         this.add("item.basebuster.citizenship_certificate.no_base", "The villager can only be released inside a team-owned flag's protection area.");
         this.add("item.basebuster.citizenship_certificate.base_full", "This base's level can't support any more citizens.");
+        this.add("item.basebuster.citizenship_certificate.tax_collector_present", "This base already employs a tax collector.");
         this.add("item.basebuster.citizenship_certificate.placed", "%s has joined '%s' as a citizen!");
         // Banner items delegate their description id to the standing block
         this.addBlock(BaseBuster.VICTORY_BANNER_TIER1, "Victory Banner (Tier 1)");

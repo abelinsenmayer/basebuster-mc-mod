@@ -63,6 +63,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import dev.abelinsenmayer.basebuster.BaseBuster;
+
 import static dev.abelinsenmayer.basebuster.BaseBuster.BASE_FLAG_BLOCK_ENTITY;
 
 public class BaseFlagBlockEntity extends BannerBlockEntity {
@@ -79,12 +81,16 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
     // Ticks between scans cataloguing the villagers inside this flag's sphere
-    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 20 * 20;
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 5 * 20;
     // Consecutive scans a non-citizen must be seen in range before it's granted
     // citizenship; the same count of missed scans revokes a citizen's status
     private static final int CITIZENSHIP_SCANS = 4;
     // Default name given to unnamed citizens; revocation strips only this one
     private static final String DEFAULT_CITIZEN_NAME = "Villager";
+    // Registry id stored on a roster entry for a tax collector; a base
+    // supports at most one
+    private static final ResourceLocation TAX_COLLECTOR_PROFESSION =
+            ResourceLocation.fromNamespaceAndPath(BaseBuster.MODID, "tax_collector");
     // Citizens a base of each level can support: CITIZEN_CAPACITIES[level - 1].
     // A roster already over its level's cap keeps its citizens for
     // OVER_CAPACITY_GRACE_SCANS scans before the excess is pruned
@@ -459,7 +465,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * the roster change.
      */
     public void addCitizen(Villager villager) {
-        if (isCitizen(villager.getUUID()) || !hasCitizenRoom()) {
+        if (isCitizen(villager.getUUID()) || !hasCitizenRoomFor(villager)) {
             return;
         }
         this.citizens.add(citizenSnapshot(villager));
@@ -499,11 +505,31 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
 
     /**
      * Whether the roster has room for one more citizen under this base's
-     * level cap. The only citizenship paths -- certificate releases and
-     * scan-settled villagers -- check this before enrolling.
+     * level cap.
      */
     public boolean hasCitizenRoom() {
         return this.citizens.size() < getCitizenCapacity();
+    }
+
+    /**
+     * Whether {@code villager} may join this flag's roster: room under the
+     * level cap, and for a tax collector the one-per-base limit -- a base
+     * that already employs one turns further tax collectors away from every
+     * citizenship path.
+     */
+    public boolean hasCitizenRoomFor(Villager villager) {
+        return hasCitizenRoom()
+                && (villager.getVillagerData().getProfession() != BaseBuster.TAX_COLLECTOR.get()
+                    || !hasTaxCollectorCitizen());
+    }
+
+    /**
+     * Whether a tax collector already sits on the roster; a base supports
+     * at most one.
+     */
+    public boolean hasTaxCollectorCitizen() {
+        return this.citizens.stream()
+                .anyMatch(citizen -> TAX_COLLECTOR_PROFESSION.equals(citizen.profession()));
     }
 
     /**
@@ -662,9 +688,9 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * certificate holder gets.
      */
     private void grantCitizenship(Villager villager, ServerLevel serverLevel) {
-        // At the level cap a lingering villager stays a prospect; it settles
-        // on a later scan once the roster has room again
-        if (!hasCitizenRoom()) {
+        // A villager the flag can't enroll -- over the level cap, or a
+        // second tax collector -- stays a prospect rather than settling
+        if (!hasCitizenRoomFor(villager)) {
             return;
         }
         if (!villager.hasCustomName()) {
