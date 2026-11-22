@@ -56,6 +56,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -77,8 +78,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     private static final int RAID_WARNING_TICKS = 30 * 20;
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
-    // Ticks between scans cataloguing the villagers inside this flag's sphere (30 seconds)
-    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 1 * 20;  // ABE TODO set back to 30x20
+    // Ticks between scans cataloguing the villagers inside this flag's sphere
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 20 * 20;
     // Consecutive scans a non-citizen must be seen in range before it's granted
     // citizenship; the same count of missed scans revokes a citizen's status
     private static final int CITIZENSHIP_SCANS = 4;
@@ -461,13 +462,23 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (isCitizen(villager.getUUID()) || !hasCitizenRoom()) {
             return;
         }
+        this.citizens.add(citizenSnapshot(villager));
+        setChanged();
+    }
+
+    /**
+     * The roster entry a villager presents right now: its UUID, displayed
+     * name (or {@link #DEFAULT_CITIZEN_NAME} while unnamed), and current
+     * profession. Taken fresh at enrollment and again each scan so the
+     * roster tracks profession and name changes after settling.
+     */
+    private static Citizen citizenSnapshot(Villager villager) {
         Component customName = villager.getCustomName();
-        this.citizens.add(new Citizen(
+        return new Citizen(
                 villager.getUUID(),
                 customName != null ? customName.getString() : DEFAULT_CITIZEN_NAME,
                 BuiltInRegistries.VILLAGER_PROFESSION.getKey(
-                        villager.getVillagerData().getProfession())));
-        setChanged();
+                        villager.getVillagerData().getProfession()));
     }
 
     /** Whether {@code citizenId} is on this flag's citizen roster. */
@@ -541,19 +552,30 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
                 new AABB(flagPos).inflate(radius),
                 villager -> villager.isAlive()
                         && villager.blockPosition().distSqr(flagPos) <= radiusSqr);
-        Set<UUID> inRangeIds = new HashSet<>();
+        Map<UUID, Villager> inRange = new HashMap<>();
         for (Villager villager : villagers) {
-            inRangeIds.add(villager.getUUID());
+            inRange.put(villager.getUUID(), villager);
         }
+        Set<UUID> inRangeIds = inRange.keySet();
 
         boolean rosterChanged = false;
-        Iterator<Citizen> citizenIterator = this.citizens.iterator();
+        ListIterator<Citizen> citizenIterator = this.citizens.listIterator();
         while (citizenIterator.hasNext()) {
-            UUID citizenId = citizenIterator.next().id();
-            if (inRangeIds.contains(citizenId)) {
-                this.citizenAbsences.remove(citizenId);
+            Citizen citizen = citizenIterator.next();
+            Villager villager = inRange.get(citizen.id());
+            if (villager != null) {
+                this.citizenAbsences.remove(citizen.id());
+                // Roster entries are enrollment-time snapshots; a citizen
+                // that has since taken up a profession or been renamed
+                // needs its entry refreshed
+                Citizen current = citizenSnapshot(villager);
+                if (!current.equals(citizen)) {
+                    citizenIterator.set(current);
+                    rosterChanged = true;
+                }
                 continue;
             }
+            UUID citizenId = citizen.id();
             if (this.citizenAbsences.merge(citizenId, 1, Integer::sum) >= CITIZENSHIP_SCANS) {
                 citizenIterator.remove();
                 this.citizenAbsences.remove(citizenId);
