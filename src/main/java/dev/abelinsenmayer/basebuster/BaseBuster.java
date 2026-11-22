@@ -31,14 +31,22 @@ import net.neoforged.neoforge.common.data.ExistingFileHelper;
 import net.neoforged.neoforge.data.event.GatherDataEvent;
 import org.slf4j.Logger;
 
+import com.google.common.collect.ImmutableSet;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.Codec;
+
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.ai.village.poi.PoiType;
+import net.minecraft.world.entity.npc.VillagerProfession;
+import net.minecraft.world.entity.npc.VillagerTrades;
 import net.minecraft.world.entity.monster.Evoker;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.entity.monster.Ravager;
@@ -49,7 +57,9 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Tiers;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
@@ -75,6 +85,7 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -93,6 +104,8 @@ public class BaseBuster {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, BaseBuster.MODID);
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister.create(Registries.ENTITY_TYPE, BaseBuster.MODID);
     public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES = DeferredRegister.createDataComponents(Registries.DATA_COMPONENT_TYPE, MODID);
+    public static final DeferredRegister<PoiType> POI_TYPES = DeferredRegister.create(Registries.POINT_OF_INTEREST_TYPE, MODID);
+    public static final DeferredRegister<VillagerProfession> VILLAGER_PROFESSIONS = DeferredRegister.create(Registries.VILLAGER_PROFESSION, MODID);
 
     public static final DeferredBlock<BaseFlagBlock> BASE_FLAG_BLOCK = BLOCKS.register("base_flag_block", () -> new BaseFlagBlock(BlockBehaviour.Properties.of()));
     public static final DeferredItem<BlockItem> BASE_FLAG_BLOCK_ITEM = ITEMS.registerSimpleBlockItem("base_flag_block", BASE_FLAG_BLOCK);
@@ -241,6 +254,25 @@ public class BaseBuster {
     public static final DeferredItem<DeferredSpawnEggItem> RAIDER_RAVAGER_BOSS_SPAWN_EGG = ITEMS.register("raider_ravager_boss_spawn_egg",
             () -> new DeferredSpawnEggItem(RAIDER_RAVAGER_BOSS, 0x5B5049, 0x3A3430, new Item.Properties()));
 
+    // The Arcanist villager profession: sells Bottles o' Enchanting. Its job
+    // site is a block claimable through POI detection -- POI types match block
+    // states, so an end crystal (an entity) can't be one; the enchanting
+    // table stands in. Change ARCANIST_WORKSTATION to any unclaimed block to
+    // re-theme it. maxTickets 1 means one table supports one arcanist, like
+    // vanilla workstations. The acquirable_job_site POI tag (data/minecraft/
+    // tags/point_of_interest_type) lets unemployed villagers claim it.
+    public static final Block ARCANIST_WORKSTATION = Blocks.ENCHANTING_TABLE;
+    public static final DeferredHolder<PoiType, PoiType> ARCANIST_POI = POI_TYPES.register("arcanist",
+            () -> new PoiType(Set.copyOf(ARCANIST_WORKSTATION.getStateDefinition().getPossibleStates()), 1, 1));
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> ARCANIST = VILLAGER_PROFESSIONS.register("arcanist",
+            () -> new VillagerProfession(
+                    "arcanist",
+                    poiType -> poiType.is(ARCANIST_POI.getKey()),
+                    poiType -> poiType.is(ARCANIST_POI.getKey()),
+                    ImmutableSet.of(Items.LAPIS_LAZULI),
+                    ImmutableSet.of(),
+                    SoundEvents.ENCHANTMENT_TABLE_USE));
+
     // The mod's creative tab, placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> BASEBUSTER_TAB = CREATIVE_MODE_TABS.register("basebuster_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.basebuster")) //The language key for the title of your CreativeModeTab
@@ -296,6 +328,10 @@ public class BaseBuster {
         // Register the Deferred Register to the mod event bus so entity types get registered
         ENTITY_TYPES.register(modEventBus);
         DATA_COMPONENT_TYPES.register(modEventBus);
+        // Register the Deferred Register to the mod event bus so villager
+        // profession and job-site POI types get registered
+        POI_TYPES.register(modEventBus);
+        VILLAGER_PROFESSIONS.register(modEventBus);
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (BaseBuster) to respond directly to events.
@@ -317,6 +353,31 @@ public class BaseBuster {
     private void commonSetup(FMLCommonSetupEvent event) {
         // Some common setup code
         LOGGER.info("HELLO FROM COMMON SETUP");
+        event.enqueueWork(BaseBuster::registerArcanistTrades);
+    }
+
+    // The Arcanist's whole trade table: one emeralds -> Bottles o' Enchanting
+    // offer per profession level, the deal improving as they level. The base
+    // counts live in these arrays because interact-time scaling
+    // (BaseBusterEventBus#scaleArcanistOffers) rewrites offer results from
+    // the same numbers. Each level must produce exactly one offer -- the
+    // scaler maps offer index to tier.
+    public static final int[] ARCANIST_TIER_EMERALDS = {3, 4, 6, 8, 10};
+    public static final int[] ARCANIST_TIER_BOTTLES = {1, 2, 3, 4, 6};
+    private static final int[] ARCANIST_TIER_XP = {1, 5, 10, 15, 20};
+    private static final int ARCANIST_TRADE_USES = 12;
+
+    // TRADES is a mutable map keyed by profession, so adding the table is a
+    // plain map put.
+    private static void registerArcanistTrades() {
+        Int2ObjectMap<VillagerTrades.ItemListing[]> trades = new Int2ObjectOpenHashMap<>();
+        for (int i = 0; i < ARCANIST_TIER_BOTTLES.length; i++) {
+            trades.put(i + 1, new VillagerTrades.ItemListing[]{
+                    new VillagerTrades.ItemsForEmeralds(Items.EXPERIENCE_BOTTLE,
+                            ARCANIST_TIER_EMERALDS[i], ARCANIST_TIER_BOTTLES[i],
+                            ARCANIST_TRADE_USES, ARCANIST_TIER_XP[i])});
+        }
+        VillagerTrades.TRADES.put(ARCANIST.get(), trades);
     }
 
     // The config file watcher fires this off-thread; hop to the server thread

@@ -108,6 +108,10 @@ public class Config {
             .comment("Fraction of a trade's base cost discounted for each level of the nearest flag when a teammate trades with one of that flag's citizens inside its protected area (level 1 = this value, level 5 = 5x)")
             .defineInRange("citizenDiscount.perLevelFraction", 0.12, 0.0, 1.0);
 
+    public static final ModConfigSpec.IntValue ARCANIST_BOTTLES_PER_LIBRARIAN = BUILDER
+            .comment("Extra Bottles o' Enchanting in each trade an arcanist citizen offers for every librarian on the same flag's citizen roster")
+            .defineInRange("arcanist.bottlesPerLibrarian", 1, 0, 64);
+
     public static final ModConfigSpec.BooleanValue VANILLA_RAIDS_ENABLED = BUILDER
             .comment("Whether vanilla village raids may trigger. When false the mod enforces the vanilla disableRaids game rule, which blocks raid creation and stops raids in progress; the raid omen effect itself is preserved for use by this mod's own raid triggers. Note the config is authoritative: it overwrites any /gamerule disableRaids change on server start or config reload")
             .define("vanillaRaids.enabled", false);

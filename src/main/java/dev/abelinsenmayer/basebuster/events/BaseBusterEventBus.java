@@ -17,6 +17,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,6 +33,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.scores.PlayerTeam;
@@ -68,6 +70,9 @@ public class BaseBusterEventBus {
     // Extra blocks of slack before a player counts as having left a flag's
     // sphere, so hovering on the boundary doesn't spam enter/exit messages
     private static final int TERRITORY_EXIT_MARGIN = 4;
+
+    // Registry id stored on a citizen roster entry for a librarian
+    private static final ResourceLocation LIBRARIAN_PROFESSION = ResourceLocation.withDefaultNamespace("librarian");
 
     // Player id -> flag position whose territory currently contains them.
     // In-memory only; a stale entry just delays a re-entry message.
@@ -512,6 +517,10 @@ public class BaseBusterEventBus {
      * is what the client sends for villager right-clicks; {@code EntityInteract}
      * covers plain INTERACT as a fallback -- see the pledge handlers above.
      * Server-side only: mutating client-side offers would never reach a packet.
+     *
+     * <p>The same hook also scales an arcanist citizen's Bottle o' Enchanting
+     * results by the flag's librarian headcount -- see
+     * {@link #scaleArcanistOffers}.
      */
     @SubscribeEvent
     public void onCitizenTradeInteractAt(PlayerInteractEvent.EntityInteractSpecific event) {
@@ -549,12 +558,47 @@ public class BaseBusterEventBus {
             return;
         }
         double fraction = Config.CITIZEN_TRADE_DISCOUNT_PER_LEVEL.get() * flagEntity.getBaseLevel();
-        if (fraction <= 0.0) {
+        if (fraction > 0.0) {
+            for (MerchantOffer offer : villager.getOffers()) {
+                int discount = (int) Math.floor(fraction * offer.getBaseCostA().getCount());
+                offer.addToSpecialPriceDiff(-discount);
+            }
+        }
+        scaleArcanistOffers(villager, flagEntity);
+    }
+
+    /**
+     * Rewrites an arcanist citizen's offers so each yields the table's base
+     * bottle count plus {@link Config#ARCANIST_BOTTLES_PER_LIBRARIAN} per
+     * librarian on the flag's roster. {@code MerchantOffer.getResult()} hands
+     * out the live stack ({@code assemble} copies it on trade), so setting
+     * its count changes both the GUI listing and the payout; unlike
+     * {@code specialPriceDiff} nothing resets it, so counts are recomputed
+     * absolute -- never compounded -- on every trade open, which is also what
+     * shrinks them back when librarians leave.
+     *
+     * <p>Offer index maps to table tier because the arcanist's table produces
+     * exactly one offer per level; {@code Items.EXPERIENCE_BOTTLE} is a
+     * defensive check, not the mapping. Roster professions are snapshots from
+     * enrollment -- a villager re-professioned after settling still counts by
+     * its roster entry.
+     */
+    private static void scaleArcanistOffers(Villager villager, BaseFlagBlockEntity flagEntity) {
+        if (villager.getVillagerData().getProfession() != BaseBuster.ARCANIST.get()) {
             return;
         }
-        for (MerchantOffer offer : villager.getOffers()) {
-            int discount = (int) Math.floor(fraction * offer.getBaseCostA().getCount());
-            offer.addToSpecialPriceDiff(-discount);
+        int librarians = (int) flagEntity.getCitizens().stream()
+                .filter(citizen -> LIBRARIAN_PROFESSION.equals(citizen.profession()))
+                .count();
+        int bonus = librarians * Config.ARCANIST_BOTTLES_PER_LIBRARIAN.get();
+        int[] bases = BaseBuster.ARCANIST_TIER_BOTTLES;
+        var offers = villager.getOffers();
+        for (int i = 0; i < offers.size() && i < bases.length; i++) {
+            MerchantOffer offer = offers.get(i);
+            if (offer.getResult().is(Items.EXPERIENCE_BOTTLE)) {
+                offer.getResult().setCount(Math.min(bases[i] + bonus,
+                        Items.EXPERIENCE_BOTTLE.getDefaultMaxStackSize()));
+            }
         }
     }
 
