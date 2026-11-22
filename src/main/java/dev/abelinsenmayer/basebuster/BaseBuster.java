@@ -87,6 +87,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(BaseBuster.MODID)
@@ -273,6 +274,28 @@ public class BaseBuster {
                     ImmutableSet.of(),
                     SoundEvents.ENCHANTMENT_TABLE_USE));
 
+    // The Golem Smith villager profession: sells Iron Golem spawn eggs. Its
+    // job site is the anvil family -- POI types match block states, so every
+    // damage stage claims the site. Change GOLEM_SMITH_WORKSTATIONS to any
+    // unclaimed block set to re-theme it. maxTickets 1 means one anvil
+    // supports one golem smith, like vanilla workstations. The
+    // acquirable_job_site POI tag (data/minecraft/tags/point_of_interest_type)
+    // lets unemployed villagers claim it.
+    public static final Set<Block> GOLEM_SMITH_WORKSTATIONS = Set.of(
+            Blocks.ANVIL, Blocks.CHIPPED_ANVIL, Blocks.DAMAGED_ANVIL);
+    public static final DeferredHolder<PoiType, PoiType> GOLEM_SMITH_POI = POI_TYPES.register("golem_smith",
+            () -> new PoiType(GOLEM_SMITH_WORKSTATIONS.stream()
+                    .flatMap(block -> block.getStateDefinition().getPossibleStates().stream())
+                    .collect(Collectors.toSet()), 1, 1));
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> GOLEM_SMITH = VILLAGER_PROFESSIONS.register("golem_smith",
+            () -> new VillagerProfession(
+                    "golem_smith",
+                    poiType -> poiType.is(GOLEM_SMITH_POI.getKey()),
+                    poiType -> poiType.is(GOLEM_SMITH_POI.getKey()),
+                    ImmutableSet.of(Items.IRON_INGOT),
+                    ImmutableSet.of(),
+                    SoundEvents.ANVIL_USE));
+
     // The mod's creative tab, placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> BASEBUSTER_TAB = CREATIVE_MODE_TABS.register("basebuster_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.basebuster")) //The language key for the title of your CreativeModeTab
@@ -354,6 +377,7 @@ public class BaseBuster {
         // Some common setup code
         LOGGER.info("HELLO FROM COMMON SETUP");
         event.enqueueWork(BaseBuster::registerArcanistTrades);
+        event.enqueueWork(BaseBuster::registerGolemSmithTrades);
     }
 
     // The Arcanist's whole trade table: one emeralds -> Bottles o' Enchanting
@@ -378,6 +402,28 @@ public class BaseBuster {
                             ARCANIST_TRADE_USES, ARCANIST_TIER_XP[i])});
         }
         VillagerTrades.TRADES.put(ARCANIST.get(), trades);
+    }
+
+    // The Golem Smith's whole trade table: one emeralds -> Iron Golem spawn
+    // egg offer per profession level, the deal improving as they level. The
+    // base counts live in these arrays because interact-time scaling
+    // (BaseBusterEventBus#scaleGolemSmithOffers) rewrites offer results from
+    // the same numbers. Each level must produce exactly one offer -- the
+    // scaler maps offer index to tier.
+    public static final int[] GOLEM_SMITH_TIER_EMERALDS = {8, 16, 24, 32, 48};
+    public static final int[] GOLEM_SMITH_TIER_EGGS = {1, 2, 3, 4, 6};
+    private static final int[] GOLEM_SMITH_TIER_XP = {1, 5, 10, 15, 20};
+    private static final int GOLEM_SMITH_TRADE_USES = 1;
+
+    private static void registerGolemSmithTrades() {
+        Int2ObjectMap<VillagerTrades.ItemListing[]> trades = new Int2ObjectOpenHashMap<>();
+        for (int i = 0; i < GOLEM_SMITH_TIER_EGGS.length; i++) {
+            trades.put(i + 1, new VillagerTrades.ItemListing[]{
+                    new VillagerTrades.ItemsForEmeralds(Items.IRON_GOLEM_SPAWN_EGG,
+                            GOLEM_SMITH_TIER_EMERALDS[i], GOLEM_SMITH_TIER_EGGS[i],
+                            GOLEM_SMITH_TRADE_USES, GOLEM_SMITH_TIER_XP[i])});
+        }
+        VillagerTrades.TRADES.put(GOLEM_SMITH.get(), trades);
     }
 
     // The config file watcher fires this off-thread; hop to the server thread

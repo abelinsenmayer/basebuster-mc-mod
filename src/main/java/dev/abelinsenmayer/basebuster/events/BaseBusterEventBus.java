@@ -62,6 +62,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 public class BaseBusterEventBus {
@@ -73,6 +74,12 @@ public class BaseBusterEventBus {
 
     // Registry id stored on a citizen roster entry for a librarian
     private static final ResourceLocation LIBRARIAN_PROFESSION = ResourceLocation.withDefaultNamespace("librarian");
+
+    // Registry ids a golem smith's roster neighbors count for its
+    // bonus-egg scaling
+    private static final Set<ResourceLocation> GOLEM_SMITH_BONUS_PROFESSIONS = Set.of(
+            ResourceLocation.withDefaultNamespace("toolsmith"),
+            ResourceLocation.withDefaultNamespace("weaponsmith"));
 
     // Player id -> flag position whose territory currently contains them.
     // In-memory only; a stale entry just delays a re-entry message.
@@ -519,8 +526,9 @@ public class BaseBusterEventBus {
      * Server-side only: mutating client-side offers would never reach a packet.
      *
      * <p>The same hook also scales an arcanist citizen's Bottle o' Enchanting
-     * results by the flag's librarian headcount -- see
-     * {@link #scaleArcanistOffers}.
+     * results by the flag's librarian headcount, and a golem smith citizen's
+     * Iron Golem spawn egg results by its toolsmith and weaponsmith headcount
+     * -- see {@link #scaleArcanistOffers} and {@link #scaleGolemSmithOffers}.
      */
     @SubscribeEvent
     public void onCitizenTradeInteractAt(PlayerInteractEvent.EntityInteractSpecific event) {
@@ -565,6 +573,7 @@ public class BaseBusterEventBus {
             }
         }
         scaleArcanistOffers(villager, flagEntity);
+        scaleGolemSmithOffers(villager, flagEntity);
     }
 
     /**
@@ -579,9 +588,9 @@ public class BaseBusterEventBus {
      *
      * <p>Offer index maps to table tier because the arcanist's table produces
      * exactly one offer per level; {@code Items.EXPERIENCE_BOTTLE} is a
-     * defensive check, not the mapping. Roster professions are snapshots from
-     * enrollment -- a villager re-professioned after settling still counts by
-     * its roster entry.
+     * defensive check, not the mapping. Roster entries track the live
+     * villager's profession each scan, so a citizen that just picked up
+     * library work counts once the next scan lands.
      */
     private static void scaleArcanistOffers(Villager villager, BaseFlagBlockEntity flagEntity) {
         if (villager.getVillagerData().getProfession() != BaseBuster.ARCANIST.get()) {
@@ -598,6 +607,36 @@ public class BaseBusterEventBus {
             if (offer.getResult().is(Items.EXPERIENCE_BOTTLE)) {
                 offer.getResult().setCount(Math.min(bases[i] + bonus,
                         Items.EXPERIENCE_BOTTLE.getDefaultMaxStackSize()));
+            }
+        }
+    }
+
+    /**
+     * Rewrites a golem smith citizen's offers so each yields the table's base
+     * egg count plus {@link Config#GOLEM_SMITH_EGGS_PER_SMITH} per toolsmith
+     * and weaponsmith on the flag's roster. Same absolute-recompute scheme as
+     * {@link #scaleArcanistOffers}: counts reset to base + bonus on every
+     * trade open rather than compounding.
+     *
+     * <p>Offer index maps to table tier because the golem smith's table
+     * produces exactly one offer per level; {@code Items.IRON_GOLEM_SPAWN_EGG}
+     * is a defensive check, not the mapping.
+     */
+    private static void scaleGolemSmithOffers(Villager villager, BaseFlagBlockEntity flagEntity) {
+        if (villager.getVillagerData().getProfession() != BaseBuster.GOLEM_SMITH.get()) {
+            return;
+        }
+        int smiths = (int) flagEntity.getCitizens().stream()
+                .filter(citizen -> GOLEM_SMITH_BONUS_PROFESSIONS.contains(citizen.profession()))
+                .count();
+        int bonus = smiths * Config.GOLEM_SMITH_EGGS_PER_SMITH.get();
+        int[] bases = BaseBuster.GOLEM_SMITH_TIER_EGGS;
+        var offers = villager.getOffers();
+        for (int i = 0; i < offers.size() && i < bases.length; i++) {
+            MerchantOffer offer = offers.get(i);
+            if (offer.getResult().is(Items.IRON_GOLEM_SPAWN_EGG)) {
+                offer.getResult().setCount(Math.min(bases[i] + bonus,
+                        Items.IRON_GOLEM_SPAWN_EGG.getDefaultMaxStackSize()));
             }
         }
     }

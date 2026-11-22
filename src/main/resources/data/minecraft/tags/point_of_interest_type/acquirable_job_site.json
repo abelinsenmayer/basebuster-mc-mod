@@ -1,5 +1,6 @@
 {
   "values": [
-    "basebuster:arcanist"
+    "basebuster:arcanist",
+    "basebuster:golem_smith"
   ]
 }

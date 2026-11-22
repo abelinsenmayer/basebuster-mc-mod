@@ -112,6 +112,10 @@ public class Config {
             .comment("Extra Bottles o' Enchanting in each trade an arcanist citizen offers for every librarian on the same flag's citizen roster")
             .defineInRange("arcanist.bottlesPerLibrarian", 1, 0, 64);
 
+    public static final ModConfigSpec.IntValue GOLEM_SMITH_EGGS_PER_SMITH = BUILDER
+            .comment("Extra Iron Golem spawn eggs in each trade a golem smith citizen offers for every toolsmith or weaponsmith on the same flag's citizen roster")
+            .defineInRange("golemSmith.eggsPerSmith", 1, 0, 64);
+
     public static final ModConfigSpec.BooleanValue VANILLA_RAIDS_ENABLED = BUILDER
             .comment("Whether vanilla village raids may trigger. When false the mod enforces the vanilla disableRaids game rule, which blocks raid creation and stops raids in progress; the raid omen effect itself is preserved for use by this mod's own raid triggers. Note the config is authoritative: it overwrites any /gamerule disableRaids change on server start or config reload")
             .define("vanillaRaids.enabled", false);

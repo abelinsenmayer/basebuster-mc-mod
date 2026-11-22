@@ -94,6 +94,8 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("item.basebuster.faction_pledge.left", "By burning a faction pledge for your faction, you have renounced your loyalty to '%s'.");
         this.add("entity.minecraft.villager.arcanist", "Arcanist");
         this.add("entity.minecraft.zombie_villager.arcanist", "Zombie Arcanist");
+        this.add("entity.minecraft.villager.golem_smith", "Golem Smith");
+        this.add("entity.minecraft.zombie_villager.golem_smith", "Zombie Golem Smith");
         this.addItem(BaseBuster.CITIZENSHIP_CERTIFICATE, "Citizenship Certificate");
         this.add("item.basebuster.citizenship_certificate.bound_to", "Bound villager: %s");
         this.add("item.basebuster.citizenship_certificate.profession", "Profession: %s");
