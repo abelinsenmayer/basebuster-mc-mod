@@ -92,12 +92,12 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("item.basebuster.faction_pledge.no_such_faction", "The faction '%s' no longer exists.");
         this.add("item.basebuster.faction_pledge.joined", "You joined faction '%s'!");
         this.add("item.basebuster.faction_pledge.left", "By burning a faction pledge for your faction, you have renounced your loyalty to '%s'.");
-        this.add("entity.minecraft.villager.arcanist", "Arcanist");
-        this.add("entity.minecraft.zombie_villager.arcanist", "Zombie Arcanist");
-        this.add("entity.minecraft.villager.golem_smith", "Golem Smith");
-        this.add("entity.minecraft.zombie_villager.golem_smith", "Zombie Golem Smith");
-        this.add("entity.minecraft.villager.tax_collector", "Tax Collector");
-        this.add("entity.minecraft.zombie_villager.tax_collector", "Zombie Tax Collector");
+        this.add("entity.minecraft.villager.basebuster.arcanist", "Arcanist");
+        this.add("entity.minecraft.zombie_villager.basebuster.arcanist", "Zombie Arcanist");
+        this.add("entity.minecraft.villager.basebuster.golem_smith", "Golem Smith");
+        this.add("entity.minecraft.zombie_villager.basebuster.golem_smith", "Zombie Golem Smith");
+        this.add("entity.minecraft.villager.basebuster.tax_collector", "Tax Collector");
+        this.add("entity.minecraft.zombie_villager.basebuster.tax_collector", "Zombie Tax Collector");
         this.addItem(BaseBuster.CITIZENSHIP_CERTIFICATE, "Citizenship Certificate");
         this.add("item.basebuster.citizenship_certificate.bound_to", "Bound villager: %s");
         this.add("item.basebuster.citizenship_certificate.profession", "Profession: %s");
