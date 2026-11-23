@@ -13,6 +13,7 @@ import dev.abelinsenmayer.basebuster.pathfinding.SquadPathSearch;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
@@ -83,8 +84,8 @@ import java.util.UUID;
  */
 public final class RaidSpawner {
     // Randomized buffer added to the protection radius, per the raid spec
-    private static final int MIN_SPAWN_BUFFER = 1;
-    private static final int MAX_SPAWN_BUFFER = 40;
+    private static final int MIN_SPAWN_BUFFER = 40;
+    private static final int MAX_SPAWN_BUFFER = 60;
     // Direction samples around the ring; more = better coverage of "nearest area"
     private static final int RING_CANDIDATES = 16;
     // Manhattan distance from a candidate at which the path counts as reached
@@ -376,6 +377,14 @@ public final class RaidSpawner {
             level.playSound(null, spot, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
         }
         level.playSound(null, flagPos, SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+        // Every player inside the flag's protection sphere hears the horn at
+        // their own position, wherever they are in the base
+        double radiusSqr = Math.pow(BaseFlagBlock.protectionRadius(level, flagPos), 2);
+        for (ServerPlayer defender : level.players()) {
+            if (defender.blockPosition().distSqr(flagPos) <= radiusSqr) {
+                level.playSound(null, defender.blockPosition(), SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 64.0F, 1.0F);
+            }
+        }
         BaseBuster.LOGGER.info("Raid of {} in {} group(s) spawned at {} targeting flag at {}", partySize, spots.size(), spots, flagPos);
     }
 

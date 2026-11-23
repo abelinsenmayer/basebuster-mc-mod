@@ -3,6 +3,7 @@ package dev.abelinsenmayer.basebuster.blocks;
 import com.mojang.authlib.GameProfile;
 import dev.abelinsenmayer.basebuster.Config;
 import dev.abelinsenmayer.basebuster.client.FlagBoundaryDebugState;
+import dev.abelinsenmayer.basebuster.entities.IRaiderBoss;
 import dev.abelinsenmayer.basebuster.items.CitizenshipCertificateItem;
 import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
@@ -1495,7 +1496,10 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * right-click.
      *
      * <p>The clicker must be on a team: flags belong to teams now, so a
-     * teamless player is turned away in red. Only one team can hold capture
+     * teamless player is turned away in red. A defended flag refuses the
+     * attempt outright -- a faction flag is defended by living raider bosses
+     * in its protection sphere, a foreign player team's flag by living
+     * members of that team in range. Only one team can hold capture
      * progress at a time -- a rival team's click discards the current
      * progress -- while teammates' clicks compound toward the same capture,
      * letting a squad take a flag faster together. Progress also resets if
@@ -1503,9 +1507,8 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * to the clicking player's team, clearing any raider faction ownership
      * and captured appearance.
      *
-     * @return whether the click was handled as a capture attempt (false when
-     *         the clicker's team already owns the flag or it belongs to
-     *         another player team)
+     * @return whether the click was handled as a capture attempt (false only
+     *         when the clicker's team already owns the flag)
      */
     public boolean advancePlayerCapture(Player player) {
         if (!(this.level instanceof ServerLevel serverLevel)) {
@@ -1525,13 +1528,46 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             return false;
         }
 
-        // Flags owned by another player team can't be captured at all
+        // Capture is refused while the flag is defended: a faction flag is
+        // defended by living raider bosses in its protection sphere, a
+        // foreign player team's flag by living members of that team. Unowned
+        // flags are still claimed instantly -- there's no one to defend them
         if (this.isPlayerTeamOwned()) {
-            player.displayClientMessage(
-                    Component.literal("You cannot capture a flag owned by another team.")
-                            .withStyle(ChatFormatting.RED),
-                    true);
-            return false;
+            BlockPos flagPos = getBlockPos();
+            int radius = getProtectionRadius();
+            double radiusSqr = (double) radius * radius;
+            PlayerTeam ownerTeam = this.getOwnerTeam();
+            boolean defended = ownerTeam != null
+                    && !serverLevel.getEntitiesOfClass(
+                            Player.class,
+                            new AABB(flagPos).inflate(radius),
+                            defender -> defender.isAlive()
+                                    && defender.getTeam() == ownerTeam
+                                    && defender.blockPosition().distSqr(flagPos) <= radiusSqr)
+                    .isEmpty();
+            if (defended) {
+                player.displayClientMessage(
+                        Component.literal("You cannot capture this flag while its defenders are nearby.")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+                return true;
+            }
+        } else if (!this.isUnowned()) {
+            // Faction-owned flag
+            BlockPos flagPos = getBlockPos();
+            int radius = getProtectionRadius();
+            double radiusSqr = (double) radius * radius;
+            boolean defended = IRaiderBoss.nearby(serverLevel, new AABB(flagPos).inflate(radius))
+                    .stream()
+                    .anyMatch(boss -> ((Entity) boss).isAlive()
+                            && ((Entity) boss).blockPosition().distSqr(flagPos) <= radiusSqr);
+            if (defended) {
+                player.displayClientMessage(
+                        Component.literal("You cannot capture this flag while a raid boss defends it.")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+                return true;
+            }
         }
 
         // A flag nobody owns is claimed instantly, no clicks needed
