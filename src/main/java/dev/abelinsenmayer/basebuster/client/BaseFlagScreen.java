@@ -29,6 +29,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.npc.VillagerProfession;
@@ -86,16 +87,29 @@ public class BaseFlagScreen extends Screen {
     private static final int PANEL_HEIGHT = 202;
     private static final int PANEL_FILL = 0xFFC6C6C6;
     private static final int PANEL_FILL_DIM = 0xFF9A9A9A;
-    private static final int PANEL_EDGE_LIGHT = 0xFFFFFFFF;
     private static final int PANEL_EDGE_DARK = 0xFF555555;
     private static final int LABEL_COLOR = 0xFF404040;
     private static final int ERROR_COLOR = 0xFFFF5555;
+    // Nine-sliced via the .mcmeta beside the PNG, so the 3px border/bevel
+    // keeps its thickness at any panel size
+    private static final ResourceLocation PANEL_SPRITE =
+            ResourceLocation.fromNamespaceAndPath(BaseBuster.MODID, "flag_gui_background");
 
-    private static final int TAB_WIDTH = 36;
-    private static final int TAB_HEIGHT = 26;
+    // Vanilla creative-inventory tab sprites (26x32): the bottom rows are
+    // the merge with the container's top edge, so the widget's bottom 4px
+    // sit on the panel border
+    private static final int TAB_WIDTH = 26;
+    private static final int TAB_HEIGHT = 32;
     private static final int TAB_GAP = 4;
-    // How far the tabs overlap the panel's top edge so the active tab merges with it
-    private static final int TAB_OVERLAP = 2;
+    // How far the sprite's bottom edge overlaps the panel's top edge so the
+    // active tab merges with it
+    private static final int TAB_OVERLAP = 4;
+    // Variant 4 is a middle-of-strip tab -- none of ours touches the panel's
+    // side edges
+    private static final ResourceLocation TAB_SELECTED_SPRITE = ResourceLocation
+            .withDefaultNamespace("container/creative_inventory/tab_top_selected_4");
+    private static final ResourceLocation TAB_UNSELECTED_SPRITE = ResourceLocation
+            .withDefaultNamespace("container/creative_inventory/tab_top_unselected_4");
 
     private static final int SWATCH_SIZE = 12;
     private static final int SWATCH_GAP = 4;
@@ -180,7 +194,8 @@ public class BaseFlagScreen extends Screen {
         // repairs (iron hammer)
         if (this.flagPos != null && this.baseInfo != null) {
             int stripWidth = 3 * TAB_WIDTH + 2 * TAB_GAP;
-            int tabX = this.panelLeft + (PANEL_WIDTH - stripWidth) / 2;
+            // Right-justified, aligned with the panel's 12px content padding
+            int tabX = this.panelLeft + PANEL_WIDTH - 12 - stripWidth;
             int tabY = this.panelTop - TAB_HEIGHT + TAB_OVERLAP;
             addRenderableWidget(new ItemTab(tabX, tabY, Tab.TEAM,
                     this.baseInfo.flagIcon(),
@@ -287,8 +302,8 @@ public class BaseFlagScreen extends Screen {
                     this.panelLeft + 12, this.panelTop + 114,
                     PANEL_WIDTH - 24, PANEL_HEIGHT - 114 - 12));
 
-            // Repairs tab: pinned header with column labels on top and the
-            // bulk Abandon/Repair buttons right-aligned beneath them, then a
+            // Repairs tab: the bulk Abandon/Repair buttons right-aligned at
+            // top, column header labels pinned beneath them, then a
             // scrollable list of repair rows (the column offsets must agree
             // with RepairEntry.render and renderBackground)
             int bulkY = this.panelTop + 26;
@@ -307,8 +322,8 @@ public class BaseFlagScreen extends Screen {
                     .bounds(this.panelLeft + PANEL_WIDTH - 12 - 76 - 4 - 84, bulkY, 84, 20)
                     .build());
             this.repairList = addRenderableWidget(new RepairList(
-                    this.panelLeft + 12, this.panelTop + 50,
-                    PANEL_WIDTH - 24, PANEL_HEIGHT - 50 - 12));
+                    this.panelLeft + 12, this.panelTop + 64,
+                    PANEL_WIDTH - 24, PANEL_HEIGHT - 64 - 12));
         }
 
         this.applyTabVisibility();
@@ -481,17 +496,10 @@ public class BaseFlagScreen extends Screen {
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.renderBackground(graphics, mouseX, mouseY, partialTick);
 
-        // Container-style panel: light edges top/left, dark bottom/right
-        graphics.fill(this.panelLeft, this.panelTop,
-                this.panelLeft + PANEL_WIDTH, this.panelTop + PANEL_HEIGHT, PANEL_FILL);
-        graphics.fill(this.panelLeft, this.panelTop,
-                this.panelLeft + PANEL_WIDTH, this.panelTop + 1, PANEL_EDGE_LIGHT);
-        graphics.fill(this.panelLeft, this.panelTop,
-                this.panelLeft + 1, this.panelTop + PANEL_HEIGHT, PANEL_EDGE_LIGHT);
-        graphics.fill(this.panelLeft, this.panelTop + PANEL_HEIGHT - 1,
-                this.panelLeft + PANEL_WIDTH, this.panelTop + PANEL_HEIGHT, PANEL_EDGE_DARK);
-        graphics.fill(this.panelLeft + PANEL_WIDTH - 1, this.panelTop,
-                this.panelLeft + PANEL_WIDTH, this.panelTop + PANEL_HEIGHT, PANEL_EDGE_DARK);
+        // Container-style panel drawn from the nine-slice sprite; the
+        // texture's black outline and beveled edges stay 3px at any size
+        graphics.blitSprite(PANEL_SPRITE, this.panelLeft, this.panelTop,
+                PANEL_WIDTH, PANEL_HEIGHT);
 
         int left = this.panelLeft + 12;
         if (this.activeTab == Tab.TEAM) {
@@ -504,7 +512,7 @@ public class BaseFlagScreen extends Screen {
                 // The faction name, read-only and in the faction's own color
                 Integer color = this.prefill.color().getColor();
                 graphics.drawString(this.font, this.prefill.name(), left, this.panelTop + 26,
-                        color != null ? 0xFF000000 | color : LABEL_COLOR);
+                        color != null ? 0xFF000000 | color : LABEL_COLOR, false);
             }
             graphics.drawString(this.font,
                     Component.translatable("gui.basebuster.faction_pledge.faction_color"),
@@ -524,7 +532,7 @@ public class BaseFlagScreen extends Screen {
                     "gui.basebuster.base_management.level", this.baseInfo.baseLevel());
             graphics.drawString(this.font, levelText,
                     this.panelLeft + PANEL_WIDTH - 12 - this.font.width(levelText),
-                    this.panelTop + 26, LABEL_COLOR);
+                    this.panelTop + 26, LABEL_COLOR, false);
 
             // Protection radius below the level, from the same level->radius
             // table the server applies
@@ -533,7 +541,7 @@ public class BaseFlagScreen extends Screen {
                     BaseFlagBlock.protectionRadius(this.baseInfo.baseLevel()));
             graphics.drawString(this.font, radiusText,
                     this.panelLeft + PANEL_WIDTH - 12 - this.font.width(radiusText),
-                    this.panelTop + 38, LABEL_COLOR);
+                    this.panelTop + 38, LABEL_COLOR, false);
 
             // Citizen trade discount below the radius: the same fraction the
             // server applies to every offer (perLevelFraction x baseLevel).
@@ -547,7 +555,7 @@ public class BaseFlagScreen extends Screen {
                     "gui.basebuster.base_management.trade_discount", discountPercent);
             graphics.drawString(this.font, discountText,
                     this.panelLeft + PANEL_WIDTH - 12 - this.font.width(discountText),
-                    this.panelTop + 50, LABEL_COLOR);
+                    this.panelTop + 50, LABEL_COLOR, false);
 
             // Citizens counter above the roster; the synced entity supplies
             // live values once the first tick resolves it
@@ -555,7 +563,7 @@ public class BaseFlagScreen extends Screen {
                 graphics.drawString(this.font,
                         Component.translatable("gui.basebuster.base_management.citizens",
                                 this.citizenCount, this.citizenCapacity),
-                        left, this.panelTop + 102, LABEL_COLOR);
+                        left, this.panelTop + 102, LABEL_COLOR, false);
             }
 
             if (this.resultMessage != null) {
@@ -563,20 +571,20 @@ public class BaseFlagScreen extends Screen {
                         this.width / 2, this.panelTop + 102, ERROR_COLOR);
             }
         } else {
-            // Repairs tab: pinned column headers above the scrollable list,
-            // on the row above the bulk Abandon/Repair buttons. The offsets
-            // match the columns in RepairEntry.render
+            // Repairs tab: pinned column headers below the bulk Abandon/
+            // Repair buttons, above the scrollable list. The offsets match
+            // the columns in RepairEntry.render
             int listLeft = this.panelLeft + 12;
-            int headerY = this.panelTop + 14;
+            int headerY = this.panelTop + 52;
             graphics.drawString(this.font,
                     Component.translatable("gui.basebuster.repairs.column_block"),
-                    listLeft + 6, headerY, LABEL_COLOR);
+                    listLeft + 6, headerY, LABEL_COLOR, false);
             graphics.drawString(this.font,
                     Component.translatable("gui.basebuster.repairs.column_location"),
-                    listLeft + 40, headerY, LABEL_COLOR);
+                    listLeft + 40, headerY, LABEL_COLOR, false);
             graphics.drawString(this.font,
                     Component.translatable("gui.basebuster.repairs.column_obstruction"),
-                    listLeft + 150, headerY, LABEL_COLOR);
+                    listLeft + 150, headerY, LABEL_COLOR, false);
         }
     }
 
@@ -615,25 +623,12 @@ public class BaseFlagScreen extends Screen {
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             boolean selected = this.tab == activeTab;
-            int x1 = getX();
-            int y1 = getY();
-            int x2 = x1 + getWidth();
-            int y2 = y1 + getHeight();
-            graphics.fill(x1, y1, x2, y2, selected ? PANEL_FILL : PANEL_FILL_DIM);
-            graphics.fill(x1, y1, x2, y1 + 1, PANEL_EDGE_LIGHT);
-            graphics.fill(x1, y1, x1 + 1, y2, PANEL_EDGE_LIGHT);
-            graphics.fill(x2 - 1, y1, x2, y2, PANEL_EDGE_DARK);
-            if (selected) {
-                // Erase the bottom edge so the tab flows into the panel
-                graphics.fill(x1 + 1, y2 - TAB_OVERLAP, x2 - 1, y2, PANEL_FILL);
-            } else {
-                graphics.fill(x1, y2 - 1, x2, y2, PANEL_EDGE_DARK);
-                if (this.isHovered()) {
-                    graphics.renderOutline(x1, y1, getWidth(), getHeight() - TAB_OVERLAP, 0xFFFFFFFF);
-                }
-            }
-            graphics.renderFakeItem(this.icon,
-                    x1 + (getWidth() - 16) / 2, y1 + (getHeight() - 16) / 2 - 1);
+            // The sprites carry their own rounded outline and bottom merge;
+            // the unselected variant's shorter rounded top reads as "behind"
+            graphics.blitSprite(
+                    selected ? TAB_SELECTED_SPRITE : TAB_UNSELECTED_SPRITE,
+                    getX(), getY(), getWidth(), getHeight());
+            graphics.renderFakeItem(this.icon, getX() + 5, getY() + 8);
         }
 
         @Override
@@ -887,8 +882,8 @@ public class BaseFlagScreen extends Screen {
             graphics.drawString(font, name, textX, textY, LABEL_COLOR, false);
             if (!"none".equals(this.citizen.profession().getPath())) {
                 Component profession = Component.translatable(
-                        "entity." + this.citizen.profession().getNamespace()
-                                + ".villager." + this.citizen.profession().getPath());
+                        "entity.minecraft.villager." + this.citizen.profession().toShortLanguageKey()
+                );
                 int professionX = textX + font.width(name) + 6;
                 int maxProfessionWidth = textRight - professionX;
                 if (maxProfessionWidth > 0) {
