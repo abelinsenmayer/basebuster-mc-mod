@@ -63,7 +63,7 @@ public class MoveToFlagGoal extends MoveToBlockGoal {
     // Ticks spent breaking through a node before block hardness is factored in
     private static final int TUNNEL_BREAK_BASE_TICKS = 30;
     // Additional break ticks per point of hardness in the obstructing column
-    private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 10.0F;
+    private static final float TUNNEL_BREAK_TICKS_PER_HARDNESS = 60.0F;
     // Upward velocity while the mob climbs inside a scaffolding column
     private static final float SCAFFOLD_CLIMB_SPEED = 0.4F;
 

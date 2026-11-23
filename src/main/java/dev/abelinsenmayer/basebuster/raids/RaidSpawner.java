@@ -94,11 +94,11 @@ public final class RaidSpawner {
     // RAID_COMPOSITION[level - 1] = {bosses, bowmen, sword-and-board, tanks}.
     // Levels past the table clamp to the last row.
     private static final int[][] RAID_COMPOSITION = {
-            {1, 6, 9, 0},    // Level 1
-            {2, 9, 12, 3},   // Level 2
-            {3, 18, 21, 9},  // Level 3
-            {4, 39, 30, 12}, // Level 4
-            {5, 39, 45, 15}, // Level 5
+            {1, 2, 9, 0},    // Level 1
+            {2, 4, 12, 1},   // Level 2
+            {3, 8, 18, 3},  // Level 3
+            {4, 16, 24, 5}, // Level 4
+            {5, 24, 32, 8}, // Level 5
     };
     // Member columns of RAID_COMPOSITION per row (all columns after the
     // leading boss count); each faction maps them to its own member types
