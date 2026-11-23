@@ -38,6 +38,7 @@ import net.minecraft.world.item.BannerItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
@@ -600,6 +601,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
      * here, gaining citizenship exactly as a released certificate holder
      * would. Only player-team-owned flags grant citizenship -- a faction's
      * flag settles no one.
+     *
+     * <p>The scan queries {@link Villager} only, so wandering traders can
+     * never settle here: {@code WanderingTrader} is an
+     * {@code AbstractVillager} sibling, not a subclass. The other citizenship
+     * paths are type-gated the same way -- pledge capture requires a
+     * {@link Villager} target ({@code BaseBusterEventBus#onVillagerPledgeInteract})
+     * and certificate release spawns a {@code VILLAGER} entity.
      */
     private void scanCitizens(ServerLevel serverLevel) {
         BlockPos flagPos = getBlockPos();
@@ -876,6 +884,13 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
         if (--blockEntity.citizenScanCountdown <= 0) {
             blockEntity.citizenScanCountdown = CITIZEN_SCAN_INTERVAL_TICKS;
             blockEntity.scanCitizens(serverLevel);
+        }
+
+        // The vanilla disableRaids rule gates this mod's raids too: pending
+        // countdowns freeze while it's set (like a vanilla raid stopping
+        // mid-fight) and no new countdown rolls
+        if (serverLevel.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+            return;
         }
 
         if (blockEntity.raidCountdownTicks > 0) {

@@ -21,6 +21,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -131,6 +132,10 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaid(ServerLevel level, BlockPos flagPos, Runnable onPartySpawned) {
+        // The vanilla disableRaids rule gates this mod's raids too
+        if (level.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+            return false;
+        }
         Faction faction = Config.RAID_FACTION.get();
         // Probe with the boss: it's the largest member, so routes and spawn
         // spots that fit the boss fit everyone
@@ -160,6 +165,10 @@ public final class RaidSpawner {
      * @return whether the raid was accepted and scheduled
      */
     public static boolean startRaidAt(ServerLevel level, BlockPos flagPos, BlockPos spawnPos, Runnable onPartySpawned) {
+        // The vanilla disableRaids rule gates this mod's raids too
+        if (level.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+            return false;
+        }
         Faction faction = Config.RAID_FACTION.get();
         IRaiderBoss boss = newPartyProbe(level, flagPos, faction);
         if (boss == null) {

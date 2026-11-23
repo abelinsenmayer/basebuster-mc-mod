@@ -116,9 +116,13 @@ public class Config {
             .comment("Extra Iron Golem spawn eggs in each trade a golem smith citizen offers for every toolsmith or weaponsmith on the same flag's citizen roster")
             .defineInRange("golemSmith.eggsPerSmith", 1, 0, 64);
 
-    public static final ModConfigSpec.BooleanValue VANILLA_RAIDS_ENABLED = BUILDER
-            .comment("Whether vanilla village raids may trigger. When false the mod enforces the vanilla disableRaids game rule, which blocks raid creation and stops raids in progress; the raid omen effect itself is preserved for use by this mod's own raid triggers. Note the config is authoritative: it overwrites any /gamerule disableRaids change on server start or config reload")
-            .define("vanillaRaids.enabled", false);
+    public static final ModConfigSpec.BooleanValue RAIDS_REPLACE_VANILLA = BUILDER
+            .comment("Whether this mod's base raids replace vanilla village raids: a Raid Omen about to trigger a vanilla raid instead starts a raid countdown on the nearest player-team base flag, and the mod's own raid triggers remain the raid omen's only outlet. The vanilla disableRaids game rule is left alone -- it gates vanilla raids and this mod's raid spawns alike")
+            .define("raids.replaceVanilla", true);
+
+    public static final ModConfigSpec.BooleanValue WANDERING_TRADER_SPAWNS_REPLACE_VANILLA = BUILDER
+            .comment("Whether the mod's base-targeting wandering trader spawner replaces vanilla wandering trader spawns: a caravan of traders equal to the base's level (with a scaled llama train) appears 1-30 blocks outside a random loaded base flag's protection radius and wanders toward its meeting point or flag. The vanilla doTraderSpawning game rule gates both flavors")
+            .define("wanderingTraders.replaceVanilla", true);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 }

@@ -25,6 +25,7 @@ import net.minecraft.world.item.Tier;
 import net.minecraft.world.item.Tiers;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BannerBlock;
@@ -345,6 +346,13 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
             if (!blockEntity.isPlayerTeamOwned()) {
                 player.displayClientMessage(
                         Component.literal("Only a team-owned flag can be raided"), true);
+                return ItemInteractionResult.CONSUME;
+            }
+            // Same gate the mod's raid spawns honor; a clearer refusal than
+            // the generic no-safe-spawn message a suppressed startRaid gives
+            if (level.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+                player.displayClientMessage(
+                        Component.literal("Raids are disabled by the disableRaids game rule"), true);
                 return ItemInteractionResult.CONSUME;
             }
             int raidTier = RaidSpawner.raidTier((ServerLevel) level, pos);

@@ -11,6 +11,7 @@ import dev.abelinsenmayer.basebuster.items.CitizenshipCertificateItem;
 import dev.abelinsenmayer.basebuster.pathfinding.PathSearchScheduler;
 import dev.abelinsenmayer.basebuster.raids.Faction;
 import dev.abelinsenmayer.basebuster.raids.RaidSpawner;
+import dev.abelinsenmayer.basebuster.traders.BaseWanderingTraderSpawner;
 import dev.abelinsenmayer.basebuster.world.FlagSpawnProtection;
 import dev.abelinsenmayer.basebuster.world.FlagsSavedData;
 import net.minecraft.ChatFormatting;
@@ -18,9 +19,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -34,8 +35,12 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.entity.npc.WanderingTraderSpawner;
 import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.level.CustomSpawner;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.storage.LevelData;
+import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -52,6 +57,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
+import net.neoforged.neoforge.event.level.ModifyCustomSpawnersEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
@@ -61,6 +67,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import javax.annotation.Nullable;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -104,19 +111,36 @@ public class BaseBusterEventBus {
     }
 
     /**
-     * Keeps the vanilla {@code disableRaids} game rule in sync with the
-     * config. The game rule suppresses {@code Raids.createOrExtendRaid} (the
-     * sole vanilla raid trigger) and stops any raid already in progress,
-     * while leaving the raid omen effect itself fully intact.
-     *
-     * <p>Also backfills the scoreboard team every {@link Faction} rides under:
+     * Backfills the scoreboard team every {@link Faction} rides under:
      * running at each server start means worlds created before a faction
      * existed still get its team, and new worlds get them all up front.
      */
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
-        syncDisableRaidsGameRule(event.getServer());
         Faction.ensureTeams(event.getServer());
+    }
+
+    /**
+     * Swaps each level's vanilla {@link WanderingTraderSpawner} for
+     * {@link BaseWanderingTraderSpawner}, keeping the vanilla spawner as a
+     * delegate so {@code wanderingTraders.replaceVanilla} can switch between
+     * our base caravans and vanilla spawns per tick -- config reloads apply
+     * without rebuilding the level's spawner list. The vanilla spawner is
+     * replaced in place rather than removed so nothing else indexes the
+     * list, and the {@code doTraderSpawning} game rule gates both flavors.
+     */
+    @SubscribeEvent
+    public void onModifyCustomSpawners(ModifyCustomSpawnersEvent event) {
+        LevelData levelData = event.getLevel().getLevelData();
+        if (!(levelData instanceof ServerLevelData serverLevelData)) {
+            return;
+        }
+        List<CustomSpawner> spawners = event.getCustomSpawners();
+        for (int i = 0; i < spawners.size(); i++) {
+            if (spawners.get(i) instanceof WanderingTraderSpawner vanillaSpawner) {
+                spawners.set(i, new BaseWanderingTraderSpawner(serverLevelData, vanillaSpawner));
+            }
+        }
     }
 
     /**
@@ -136,13 +160,6 @@ public class BaseBusterEventBus {
         if (team != null) {
             serverLevel.getScoreboard().addPlayerToTeam(event.getEntity().getScoreboardName(), team);
         }
-    }
-
-    /** Applies the config to the {@code disableRaids} game rule; call on the server thread. */
-    public static void syncDisableRaidsGameRule(MinecraftServer server) {
-        server.getGameRules()
-                .getRule(GameRules.RULE_DISABLE_RAIDS)
-                .set(!Config.VANILLA_RAIDS_ENABLED.getAsBoolean(), server);
     }
 
     /**
@@ -339,9 +356,13 @@ public class BaseBusterEventBus {
      * {@link Config#RAID_OMEN_COUNTDOWN_SECONDS} seconds. Unowned flags, a
      * flag the player's own team holds, and faction-held territory don't
      * consume the effect, nor does a flag that can't start a countdown (one
-     * pending, or a raid already in progress).
+     * pending, or a raid already in progress). The {@code disableRaids}
+     * game rule gates this trigger the same as vanilla raids.
      */
     private static void tryTriggerOmenRaid(ServerLevel level, BlockPos flagPos, ServerPlayer player) {
+        if (level.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+            return;
+        }
         boolean hasRaidOmen = player.hasEffect(MobEffects.RAID_OMEN);
         boolean hasBadOmen = player.hasEffect(MobEffects.BAD_OMEN);
         if (!hasRaidOmen && !hasBadOmen) {
@@ -369,6 +390,81 @@ public class BaseBusterEventBus {
                                 + " in " + countdownSeconds + " seconds")
                         .withStyle(ChatFormatting.DARK_RED),
                 false);
+    }
+
+    /**
+     * While {@code raids.replaceVanilla} is on, the moment a Raid Omen would
+     * trigger a vanilla village raid it instead starts a raid countdown on
+     * the nearest player-team base flag. Vanilla fires the raid inside
+     * {@code RaidOmenMobEffect} when the effect's duration reaches 1, using
+     * the player's stored raid-omen position -- this runs earlier the same
+     * tick ({@link EntityTickEvent.Pre} precedes the entity's effect tick),
+     * consumes that position, and lets the effect simply expire. When no
+     * eligible base exists the position is left alone and the vanilla raid
+     * proceeds as a fallback.
+     */
+    @SubscribeEvent
+    public void onEntityTickPre(EntityTickEvent.Pre event) {
+        if (!Config.RAIDS_REPLACE_VANILLA.get()
+                || !(event.getEntity() instanceof ServerPlayer player)
+                || !(player.level() instanceof ServerLevel level)) {
+            return;
+        }
+        MobEffectInstance raidOmen = player.getEffect(MobEffects.RAID_OMEN);
+        if (raidOmen == null || raidOmen.getDuration() != 1) {
+            return;
+        }
+        BlockPos omenPos = player.getRaidOmenPosition();
+        if (omenPos == null) {
+            return;
+        }
+        if (!level.getGameRules().getBoolean(GameRules.RULE_DISABLE_RAIDS)) {
+            tryReplaceVanillaRaid(level, player, omenPos);
+        }
+    }
+
+    /**
+     * Redirects an about-to-fire vanilla raid to the nearest loaded,
+     * player-team flag in the omen position's dimension, counting down
+     * exactly like {@link #tryTriggerOmenRaid}. The countdown refuses flags
+     * already counting down or under attack; when every candidate refuses
+     * the omen position is left in place so vanilla still gets its raid.
+     */
+    private static void tryReplaceVanillaRaid(ServerLevel level, ServerPlayer player, BlockPos omenPos) {
+        BlockPos flagPos = nearestRaidableFlag(level, omenPos);
+        if (flagPos == null
+                || !(level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)) {
+            return;
+        }
+        int countdownSeconds = Config.RAID_OMEN_COUNTDOWN_SECONDS.get();
+        if (!flagEntity.startRaidCountdown(countdownSeconds)) {
+            return;
+        }
+        player.clearRaidOmenPosition();
+        Component flagName = flagEntity.getCustomName();
+        player.displayClientMessage(
+                Component.literal("Your omen stirs -- a raid will strike "
+                                + flagEntity.getTerritoryOwnerName() + "'s flag"
+                                + (flagName != null ? " \"" + flagName.getString() + "\"" : "")
+                                + " in " + countdownSeconds + " seconds")
+                        .withStyle(ChatFormatting.DARK_RED),
+                false);
+    }
+
+    /**
+     * The nearest flag to {@code pos} that could host a raid: its chunk is
+     * loaded (a raid can't path to dead air), a player team owns it, and no
+     * raid already targets it. Null when nothing qualifies.
+     */
+    @Nullable
+    private static BlockPos nearestRaidableFlag(ServerLevel level, BlockPos pos) {
+        return FlagsSavedData.getFromLevel(level).getFlagLocations().stream()
+                .filter(level::isLoaded)
+                .filter(flagPos -> level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity
+                        && flagEntity.isPlayerTeamOwned())
+                .filter(flagPos -> !RaidSpawner.isRaidInProgress(level, flagPos))
+                .min(Comparator.comparingDouble(flagPos -> flagPos.distSqr(pos)))
+                .orElse(null);
     }
 
     private static void notifyTerritoryEntry(ServerLevel level, BlockPos flagPos, ServerPlayer player) {
