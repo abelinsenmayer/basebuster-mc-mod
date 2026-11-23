@@ -65,6 +65,13 @@ public class CaptureFlagGoal extends Goal {
         if (flag == null) {
             return false;
         }
+        // Frontier rule: when a flag the faction already owns sits at least
+        // as close as the capture target, the raider holds owned ground
+        // instead -- WanderNearFlagGoal loiters inside that flag's
+        // protection radius
+        if (this.isOwnedFlagCloser(flag)) {
+            return false;
+        }
         if (this.mob.distanceToSqr(flag.getX() + 0.5, flag.getY() + 0.5, flag.getZ() + 0.5)
                 > CAPTURE_RADIUS * CAPTURE_RADIUS) {
             return false;
@@ -90,6 +97,11 @@ public class CaptureFlagGoal extends Goal {
             return false;
         }
         if (FlagsSavedData.getFromLevel(serverLevel).getCapturedFlagLocations().contains(this.flagPos)) {
+            return false;
+        }
+        // A closer owned flag appearing mid-channel (e.g. an adjacent flag
+        // just captured) drops the channel under the same frontier rule
+        if (this.isOwnedFlagCloser(this.flagPos)) {
             return false;
         }
         if (this.mob.distanceToSqr(
@@ -159,6 +171,24 @@ public class CaptureFlagGoal extends Goal {
         return this.mob.level()
                 .clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob))
                 .getType() == HitResult.Type.MISS;
+    }
+
+    /**
+     * Whether a flag the raider faction already owns lies at least as close
+     * to the mob as {@code flag}. When one does, the capture target sits
+     * behind owned ground and the goal stays out of the way so the raider
+     * wanders near the closer owned flag instead.
+     */
+    private boolean isOwnedFlagCloser(BlockPos flag) {
+        if (!(this.mob.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        BlockPos mobPos = this.mob.blockPosition();
+        double flagDistSqr = flag.distSqr(mobPos);
+        return FlagsSavedData.getFromLevel(serverLevel).getCapturedFlagLocations().stream()
+                .filter(this.mob::isWithinRestriction)
+                .anyMatch(pos -> pos.distSqr(mobPos) <= flagDistSqr);
     }
 
     /**
