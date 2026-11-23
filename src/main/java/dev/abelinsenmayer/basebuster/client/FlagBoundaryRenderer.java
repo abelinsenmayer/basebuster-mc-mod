@@ -5,17 +5,21 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.abelinsenmayer.basebuster.BaseBuster;
 import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlock;
+import dev.abelinsenmayer.basebuster.blocks.BaseFlagBlockEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.PlayerTeam;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+
+import javax.annotation.Nullable;
 
 /**
  * Debug overlay drawing each flag's protection radius as a rough wireframe
@@ -30,10 +34,9 @@ public final class FlagBoundaryRenderer {
     // Ring offsets for the two diagonal latitude rings: sin/cos(45 deg)
     private static final float LAT_OFFSET = 0.7071068F;
 
-    // Translucent cyan, readable against most terrain
-    private static final int R = 80;
-    private static final int G = 220;
-    private static final int B = 255;
+    // Translucent fallback for unowned flags and teams without a color,
+    // readable against most terrain
+    private static final int DEFAULT_RGB = 0x50DCFF;
     private static final int A = 170;
 
     private FlagBoundaryRenderer() {
@@ -62,7 +65,8 @@ public final class FlagBoundaryRenderer {
             int radius = clientLevel != null
                     ? BaseFlagBlock.protectionRadius(clientLevel, flagPos)
                     : BaseFlagBlock.protectionRadius(1);
-            drawBoundarySphere(poseStack, lines, flagPos, radius);
+            drawBoundarySphere(poseStack, lines, flagPos, radius,
+                    boundaryColor(clientLevel, flagPos));
         }
         buffers.endBatch(RenderType.lines());
         RenderSystem.enableDepthTest();
@@ -76,7 +80,21 @@ public final class FlagBoundaryRenderer {
         FlagBoundaryDebugState.clear();
     }
 
-    private static void drawBoundarySphere(PoseStack poseStack, VertexConsumer lines, BlockPos flagPos, int radius) {
+    // Packed RGB of the owning team's chat color; the flags belong to the
+    // team, not the placer, so the scoreboard team is the source of truth
+    private static int boundaryColor(@Nullable Level level, BlockPos flagPos) {
+        if (level != null
+                && level.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity) {
+            PlayerTeam team = flagEntity.getOwnerTeam();
+            Integer color = team != null ? team.getColor().getColor() : null;
+            if (color != null) {
+                return color;
+            }
+        }
+        return DEFAULT_RGB;
+    }
+
+    private static void drawBoundarySphere(PoseStack poseStack, VertexConsumer lines, BlockPos flagPos, int radius, int rgb) {
         // Sphere centered on the flag block's center; the protection check
         // compares block positions, so this is accurate to about half a block
         double cx = flagPos.getX() + 0.5;
@@ -86,21 +104,21 @@ public final class FlagBoundaryRenderer {
 
         PoseStack.Pose pose = poseStack.last();
         // Equator plus the two axial meridians
-        drawRing(pose, lines, cx, cy, cz, r, RingPlane.XZ);
-        drawRing(pose, lines, cx, cy, cz, r, RingPlane.XY);
-        drawRing(pose, lines, cx, cy, cz, r, RingPlane.YZ);
+        drawRing(pose, lines, cx, cy, cz, r, RingPlane.XZ, rgb);
+//        drawRing(pose, lines, cx, cy, cz, r, RingPlane.XY, rgb);
+//        drawRing(pose, lines, cx, cy, cz, r, RingPlane.YZ, rgb);
         // Latitude rings at +/-45 deg give the wireframe visible volume
         float latRadius = r * LAT_OFFSET;
         float latHeight = r * LAT_OFFSET;
-        drawRing(pose, lines, cx, cy + latHeight, cz, latRadius, RingPlane.XZ);
-        drawRing(pose, lines, cx, cy - latHeight, cz, latRadius, RingPlane.XZ);
+//        drawRing(pose, lines, cx, cy + latHeight, cz, latRadius, RingPlane.XZ, rgb);
+//        drawRing(pose, lines, cx, cy - latHeight, cz, latRadius, RingPlane.XZ, rgb);
     }
 
     private enum RingPlane {
         XZ, XY, YZ
     }
 
-    private static void drawRing(PoseStack.Pose pose, VertexConsumer lines, double cx, double cy, double cz, float radius, RingPlane plane) {
+    private static void drawRing(PoseStack.Pose pose, VertexConsumer lines, double cx, double cy, double cz, float radius, RingPlane plane, int rgb) {
         double prevX = 0;
         double prevY = 0;
         double prevZ = 0;
@@ -113,7 +131,7 @@ public final class FlagBoundaryRenderer {
             double z = plane == RingPlane.XY ? cz : cz + (plane == RingPlane.XZ ? v : u);
 
             if (i > 0) {
-                emitLine(pose, lines, prevX, prevY, prevZ, x, y, z);
+                emitLine(pose, lines, prevX, prevY, prevZ, x, y, z, rgb);
             }
             prevX = x;
             prevY = y;
@@ -121,7 +139,7 @@ public final class FlagBoundaryRenderer {
         }
     }
 
-    private static void emitLine(PoseStack.Pose pose, VertexConsumer lines, double x1, double y1, double z1, double x2, double y2, double z2) {
+    private static void emitLine(PoseStack.Pose pose, VertexConsumer lines, double x1, double y1, double z1, double x2, double y2, double z2, int rgb) {
         // The lines shader expects the segment direction as the vertex normal
         double dx = x2 - x1;
         double dy = y2 - y1;
@@ -130,11 +148,14 @@ public final class FlagBoundaryRenderer {
         float nx = (float) (dx / len);
         float ny = (float) (dy / len);
         float nz = (float) (dz / len);
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
         lines.addVertex(pose, (float) x1, (float) y1, (float) z1)
-                .setColor(R, G, B, A)
+                .setColor(r, g, b, A)
                 .setNormal(pose, nx, ny, nz);
         lines.addVertex(pose, (float) x2, (float) y2, (float) z2)
-                .setColor(R, G, B, A)
+                .setColor(r, g, b, A)
                 .setNormal(pose, nx, ny, nz);
     }
 }

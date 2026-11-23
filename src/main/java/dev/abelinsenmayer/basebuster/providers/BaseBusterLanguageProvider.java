@@ -68,6 +68,7 @@ public class BaseBusterLanguageProvider extends LanguageProvider {
         this.add("gui.basebuster.base_management.show_border", "Show base border?");
         this.add("gui.basebuster.base_management.save", "Save");
         this.add("gui.basebuster.base_management.level", "Base Level: %s");
+        this.add("gui.basebuster.base_management.protection_radius", "Protection Radius: %s");
         this.add("gui.basebuster.base_management.trade_discount", "Trade Discount: %s%%");
         this.add("gui.basebuster.base_management.saved", "Base settings saved.");
         this.add("gui.basebuster.base_management.not_member", "Only the flag's owning team can edit its base.");

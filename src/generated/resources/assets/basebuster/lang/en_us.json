@@ -28,6 +28,7 @@
   "gui.basebuster.base_management.name_invalid": "Invalid base name.",
   "gui.basebuster.base_management.name_taken": "Your team already has a base named '%s'.",
   "gui.basebuster.base_management.not_member": "Only the flag's owning team can edit its base.",
+  "gui.basebuster.base_management.protection_radius": "Protection Radius: %s",
   "gui.basebuster.base_management.save": "Save",
   "gui.basebuster.base_management.saved": "Base settings saved.",
   "gui.basebuster.base_management.show_border": "Show base border?",
