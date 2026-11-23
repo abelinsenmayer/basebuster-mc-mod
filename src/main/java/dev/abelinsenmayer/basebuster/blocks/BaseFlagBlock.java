@@ -106,9 +106,12 @@ public class BaseFlagBlock extends BannerBlock implements EntityBlock {
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
-        // Face the player on placement, same as BannerItem's standing placement
+        // Face the player on placement, same as BannerItem's standing placement.
+        // & 15 (not % 16): the raw yaw can transiently fall outside [-180, 180)
+        // (Entity#setRot stores yRot % 360), and Java's % would then yield a
+        // negative, out-of-range rotation
         return this.defaultBlockState()
-                .setValue(ROTATION, Mth.floor((180.0F + context.getRotation()) * 16.0F / 360.0F) % 16);
+                .setValue(ROTATION, Mth.floor((180.0F + context.getRotation()) * 16.0F / 360.0F) & 15);
     }
 
     @Override
