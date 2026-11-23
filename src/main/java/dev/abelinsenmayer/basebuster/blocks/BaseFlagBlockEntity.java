@@ -81,7 +81,7 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
     // Mark the entity dirty at this interval while a raid countdown runs so it survives saves
     private static final int RAID_SAVE_INTERVAL_TICKS = 20;
     // Ticks between scans cataloguing the villagers inside this flag's sphere
-    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 5 * 20;
+    private static final int CITIZEN_SCAN_INTERVAL_TICKS = 30 * 20;
     // Consecutive scans a non-citizen must be seen in range before it's granted
     // citizenship; the same count of missed scans revokes a citizen's status
     private static final int CITIZENSHIP_SCANS = 4;
@@ -557,6 +557,38 @@ public class BaseFlagBlockEntity extends BannerBlockEntity {
             Block.popResource(serverLevel, getBlockPos().above(), certificate);
         }
         setChanged();
+    }
+
+    /**
+     * Records a citizen's death: strikes it from the roster and removes its
+     * owning-team membership right away, rather than waiting for the
+     * periodic scan to count {@link #CITIZENSHIP_SCANS} consecutive
+     * absences. Unlike {@link #revokeCitizenship} there's no name cleanup --
+     * the dead villager's entity is gone. The caller is responsible for
+     * {@code sendBlockUpdated} when clients need the roster change.
+     *
+     * @return whether {@code citizenId} was on the roster
+     */
+    public boolean onCitizenDeath(UUID citizenId) {
+        Citizen dead = null;
+        ListIterator<Citizen> iterator = this.citizens.listIterator();
+        while (iterator.hasNext()) {
+            Citizen citizen = iterator.next();
+            if (citizen.id().equals(citizenId)) {
+                dead = citizen;
+                iterator.remove();
+                break;
+            }
+        }
+        if (dead == null) {
+            return false;
+        }
+        this.citizenAbsences.remove(citizenId);
+        if (this.level instanceof ServerLevel serverLevel) {
+            this.removeFromOwnerTeam(citizenId, serverLevel);
+        }
+        setChanged();
+        return true;
     }
 
     /**

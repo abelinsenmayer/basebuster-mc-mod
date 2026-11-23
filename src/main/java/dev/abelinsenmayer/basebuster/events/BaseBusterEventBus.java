@@ -43,6 +43,7 @@ import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -450,6 +451,34 @@ public class BaseBusterEventBus {
     @SubscribeEvent
     public void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
         this.pledgeThrowers.remove(event.getEntity().getUUID());
+    }
+
+    /**
+     * A dead citizen leaves its flag's roster immediately -- the flag's
+     * periodic scan would otherwise take minutes to notice the absence.
+     * Citizens are matched by roster, not by where they died, so one that
+     * wandered out of the sphere is still caught. Only loaded flags answer;
+     * a citizen dying while its flag's chunk is unloaded stays covered by
+     * the scan once the flag next ticks.
+     */
+    @SubscribeEvent
+    public void onVillagerDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof Villager villager)
+                || !(villager.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        UUID villagerId = villager.getUUID();
+        for (BlockPos flagPos : FlagsSavedData.getFromLevel(serverLevel).getFlagLocations()) {
+            // getBlockEntity would load an unloaded flag's chunk; skip it
+            if (!serverLevel.isLoaded(flagPos)
+                    || !(serverLevel.getBlockEntity(flagPos) instanceof BaseFlagBlockEntity flagEntity)) {
+                continue;
+            }
+            if (flagEntity.onCitizenDeath(villagerId)) {
+                serverLevel.sendBlockUpdated(flagPos, flagEntity.getBlockState(), flagEntity.getBlockState(), 3);
+                break;
+            }
+        }
     }
 
     /**
